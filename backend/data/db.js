@@ -40,6 +40,18 @@ db.exec(`
     reason TEXT NOT NULL,
     policy_rule TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS shop_data (
+    user_id TEXT PRIMARY KEY,
+    json TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS challenges (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    json TEXT NOT NULL
+  );
 `);
 
 // Seed default demo user if not present
@@ -195,4 +207,66 @@ export function insertUserToDb(user) {
   `);
   stmt.run(user.id, user.email, user.password, user.name, user.shopName, user.role, user.phone);
   return user;
+}
+
+export function getShopDataFromDb(userId) {
+  const row = db.prepare('SELECT json FROM shop_data WHERE user_id = ?').get(userId);
+  if (!row) return null;
+  try {
+    return JSON.parse(row.json);
+  } catch {
+    return null;
+  }
+}
+
+export function saveShopDataToDb(userId, data) {
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO shop_data (user_id, json)
+    VALUES (?, ?)
+  `);
+  stmt.run(userId, JSON.stringify(data));
+}
+
+export function getChallengeFromDb(id) {
+  const row = db.prepare('SELECT * FROM challenges WHERE id = ?').get(id);
+  if (!row) return null;
+  try {
+    const parsed = JSON.parse(row.json);
+    return {
+      ...parsed,
+      challengeId: row.id,
+      ownerId: row.user_id,
+      status: row.status
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function getChallengesByUserFromDb(userId) {
+  const rows = db.prepare('SELECT * FROM challenges WHERE user_id = ?').all(userId);
+  return rows.map(row => {
+    try {
+      const parsed = JSON.parse(row.json);
+      return {
+        ...parsed,
+        challengeId: row.id,
+        ownerId: row.user_id,
+        status: row.status
+      };
+    } catch {
+      return { challengeId: row.id, ownerId: row.user_id, status: row.status };
+    }
+  });
+}
+
+export function saveChallengeToDb(challenge) {
+  const id = challenge.challengeId || challenge.id;
+  const userId = challenge.ownerId || challenge.user_id || challenge.userId;
+  const status = challenge.status || 'PENDING';
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO challenges (id, user_id, status, json)
+    VALUES (?, ?, ?, ?)
+  `);
+  stmt.run(id, userId, status, JSON.stringify(challenge));
 }

@@ -27,3 +27,25 @@ export function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'Unauthorized: Invalid or expired token.' });
   }
 }
+
+export function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Unauthorized: Authentication token required.' });
+    }
+
+    const userRole = req.user.role;
+    const isAllowed = roles.some(role => 
+      role.toLowerCase() === (userRole || '').toLowerCase()
+    );
+
+    if (!isAllowed) {
+      return res.status(403).json({ 
+        error: 'Forbidden: Insufficient role permissions.', 
+        code: 'FORBIDDEN' 
+      });
+    }
+
+    next();
+  };
+}

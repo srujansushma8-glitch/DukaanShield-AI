@@ -1,6 +1,15 @@
 import { AsyncLocalStorage } from 'async_hooks';
 import { initialShopData } from './mockShopData.js';
-import { getAuditLogsFromDb, insertAuditLogToDb, getUserByIdFromDb } from './db.js';
+import { 
+  getAuditLogsFromDb, 
+  insertAuditLogToDb, 
+  getUserByIdFromDb,
+  getShopDataFromDb,
+  saveShopDataToDb,
+  getChallengeFromDb,
+  getChallengesByUserFromDb,
+  saveChallengeToDb
+} from './db.js';
 
 export const userContext = new AsyncLocalStorage();
 
@@ -8,6 +17,9 @@ class DataStore {
   constructor() {
     this.userShops = new Map();
     this.userSessions = new Map();
+    this.userFindings = new Map();
+    this.userChallenges = new Map();
+    this.loadedChallengeUsers = new Set();
     this.defaultUserId = 'usr_owner_001';
     this.reset();
   }
@@ -15,24 +27,12 @@ class DataStore {
   reset() {
     this.userShops.clear();
     this.userSessions.clear();
+    this.userFindings.clear();
+    this.userChallenges.clear();
+    this.loadedChallengeUsers.clear();
 
     // Seed default demo owner shop
     this.seedUserShop(this.defaultUserId);
-
-    this.findings = [
-      {
-        id: "FIND-01",
-        attack: "Poisoned Supplier Invoice",
-        declaredIntent: "Reconcile vendor deliveries",
-        requestedAction: "vendor.update_bank_details(IFSC='HDFC0001928')",
-        expectedDecision: "BLOCKED",
-        actualDecision: "BLOCKED",
-        isCorrect: true,
-        severity: "CRITICAL",
-        suggestedFix: "Maintain strict separation between document extraction and bank credential modification.",
-        timestamp: new Date(Date.now() - 3600000 * 1).toISOString()
-      }
-    ];
   }
 
   seedUserShop(userId, overrides = {}) {
@@ -48,48 +48,116 @@ class DataStore {
     } else if (overrides.name) {
       shop.shop.name = overrides.name;
       shop.shop.owner = overrides.owner || 'Shop Owner';
-      shop.shop.email = overrides.email || '';
-      if (overrides.phone) shop.shop.phone = overrides.phone;
-      shop.shop.id = `SHOP-${userId}`;
-      shop.shop.upiId = `${(overrides.name || 'shop').toLowerCase().replace(/[^a-z0-9]/g, '')}@upi`;
+      shop.shop.email = overrides.email || 'owner@kirana.store';
+      shop.shop.phone = overrides.phone || '+91 90000 00000';
+      shop.shop.id = `SHOP-${userId || 'custom'}`;
+      shop.shop.upiId = `${overrides.name.toLowerCase().replace(/[^a-z0-9]/g, '')}@upi`;
     }
     this.userShops.set(userId, shop);
+    saveShopDataToDb(userId, shop);
     return shop;
   }
 
+  get currentUserId() {
+    const store = userContext.getStore();
+    return store?.userId || this.defaultUserId;
+  }
+
   getShopData(userId) {
-    const id = userId || userContext.getStore()?.userId || this.defaultUserId;
-    if (!this.userShops.has(id)) {
-      this.seedUserShop(id);
+    const uid = userId || this.currentUserId;
+    if (!this.userShops.has(uid)) {
+      const fromDb = getShopDataFromDb(uid);
+      if (fromDb) {
+        this.userShops.set(uid, fromDb);
+      } else {
+        this.seedUserShop(uid);
+      }
     }
-    return this.userShops.get(id);
+    return this.userShops.get(uid);
   }
 
   setShopData(userId, data) {
-    const id = userId || userContext.getStore()?.userId || this.defaultUserId;
-    this.userShops.set(id, data);
+    const uid = userId || this.currentUserId;
+    this.userShops.set(uid, data);
+    saveShopDataToDb(uid, data);
+  }
+
+  getUserChallenges(userId) {
+    const uid = userId || this.currentUserId;
+    if (!this.userChallenges.has(uid)) {
+      this.userChallenges.set(uid, new Map());
+      const rows = getChallengesByUserFromDb(uid);
+      const userMap = this.userChallenges.get(uid);
+      for (const ch of rows) {
+        userMap.set(ch.challengeId || ch.id, ch);
+      }
+      this.loadedChallengeUsers.add(uid);
+    }
+    return this.userChallenges.get(uid);
+  }
+
+  getChallenge(challengeId, userId) {
+    const uid = userId || this.currentUserId;
+    const userMap = this.getUserChallenges(uid);
+    if (userMap.has(challengeId)) {
+      return userMap.get(challengeId);
+    }
+
+    const fromDb = getChallengeFromDb(challengeId);
+    if (fromDb) {
+      const owner = fromDb.ownerId || fromDb.user_id;
+      const ownerMap = this.getUserChallenges(owner);
+      ownerMap.set(fromDb.challengeId || fromDb.id, fromDb);
+      if (owner === uid) {
+        return fromDb;
+      }
+    }
+    return null;
+  }
+
+  saveChallenge(challenge) {
+    const uid = challenge.ownerId || challenge.user_id || this.currentUserId;
+    const userMap = this.getUserChallenges(uid);
+    const id = challenge.challengeId || challenge.id;
+    userMap.set(id, challenge);
+    saveChallengeToDb(challenge);
+    return challenge;
+  }
+
+  getPendingChallenges(userId) {
+    const uid = userId || this.currentUserId;
+    const userMap = this.getUserChallenges(uid);
+    return Array.from(userMap.values()).filter(c => c.status === 'PENDING' && !c.resolved && (!c.ownerId || c.ownerId === uid));
   }
 
   getSessionState(userId) {
-    const id = userId || userContext.getStore()?.userId || this.defaultUserId;
-    if (!this.userSessions.has(id)) {
-      this.userSessions.set(id, {
-        sessionId: `sess_${id}_${Date.now()}`,
-        activeIntent: null,
+    const uid = userId || this.currentUserId;
+    if (!this.userSessions.has(uid)) {
+      this.userSessions.set(uid, {
+        activeIntent: "Daily Store Management",
         actionHistory: [],
+        pendingChallenges: [],
+        splitActionPendingExport: false,
+        gradualDriftHistory: [],
         cumulativeRefunds: 0,
         refundCount: 0,
-        pendingChallenges: []
+        sessionId: `sess_${Date.now().toString().slice(-6)}`
       });
     }
-    return this.userSessions.get(id);
+    const session = this.userSessions.get(uid);
+    if (!session.actionHistory) session.actionHistory = [];
+    if (!session.pendingChallenges) session.pendingChallenges = [];
+    if (session.cumulativeRefunds === undefined) session.cumulativeRefunds = 0;
+    if (session.refundCount === undefined) session.refundCount = 0;
+    return session;
   }
 
   setSessionState(userId, state) {
-    const id = userId || userContext.getStore()?.userId || this.defaultUserId;
-    this.userSessions.set(id, state);
+    const uid = userId || this.currentUserId;
+    this.userSessions.set(uid, state);
   }
 
+  // Backwards-compatible global accessors mapped to active user context
   get shopData() {
     return this.getShopData();
   }
@@ -106,6 +174,64 @@ class DataStore {
     this.setSessionState(null, state);
   }
 
+  getFindings(userId) {
+    const uid = userId || this.currentUserId;
+    if (!this.userFindings.has(uid)) {
+      this.userFindings.set(uid, [
+        {
+          id: "FIND-01",
+          attack: "Poisoned Supplier Invoice",
+          declaredIntent: "Reconcile vendor deliveries",
+          requestedAction: "vendor.update_bank_details(IFSC='HDFC0001928')",
+          expectedDecision: "BLOCKED",
+          actualDecision: "BLOCKED",
+          isCorrect: true,
+          severity: "CRITICAL",
+          suggestedFix: "Maintain strict separation between document extraction and bank credential modification.",
+          timestamp: new Date(Date.now() - 3600000 * 1).toISOString()
+        }
+      ]);
+    }
+    return this.userFindings.get(uid);
+  }
+
+  get findings() {
+    return this.getFindings(this.currentUserId);
+  }
+
+  set findings(val) {
+    this.userFindings.set(this.currentUserId, val);
+  }
+
+  addFinding(finding, userId) {
+    const list = this.getFindings(userId || this.currentUserId);
+    const newFinding = {
+      id: `FIND-${(list.length + 1).toString().padStart(2, '0')}`,
+      timestamp: new Date().toISOString(),
+      ...finding
+    };
+    list.unshift(newFinding);
+    return newFinding;
+  }
+
+  getMetrics(userId) {
+    const list = this.getFindings(userId || this.currentUserId);
+    const total = list.length;
+    const blocked = list.filter(f => f.actualDecision === "BLOCKED" || (f.actualDecision === "CHALLENGED" && f.expectedDecision === "CHALLENGED")).length;
+    const falseAllows = list.filter(f => f.actualDecision === "ALLOWED" && f.expectedDecision !== "ALLOWED").length;
+    const falseBlocks = list.filter(f => f.actualDecision === "BLOCKED" && f.expectedDecision === "ALLOWED").length;
+    const correctDecisions = list.filter(f => f.isCorrect).length;
+    const successRate = total > 0 ? Math.round((correctDecisions / total) * 100) : 100;
+
+    return {
+      totalAttacks: total,
+      attacksBlocked: blocked,
+      falseAllows,
+      falseBlocks,
+      successRate
+    };
+  }
+
   get auditLogs() {
     return getAuditLogsFromDb();
   }
@@ -120,33 +246,6 @@ class DataStore {
     };
     insertAuditLogToDb(log);
     return log;
-  }
-
-  addFinding(finding) {
-    const newFinding = {
-      id: `FIND-${(this.findings.length + 1).toString().padStart(2, '0')}`,
-      timestamp: new Date().toISOString(),
-      ...finding
-    };
-    this.findings.unshift(newFinding);
-    return newFinding;
-  }
-
-  getMetrics() {
-    const total = this.findings.length;
-    const blocked = this.findings.filter(f => f.actualDecision === "BLOCKED" || (f.actualDecision === "CHALLENGED" && f.expectedDecision === "CHALLENGED")).length;
-    const falseAllows = this.findings.filter(f => f.actualDecision === "ALLOWED" && f.expectedDecision !== "ALLOWED").length;
-    const falseBlocks = this.findings.filter(f => f.actualDecision === "BLOCKED" && f.expectedDecision === "ALLOWED").length;
-    const correctDecisions = this.findings.filter(f => f.isCorrect).length;
-    const successRate = total > 0 ? Math.round((correctDecisions / total) * 100) : 100;
-
-    return {
-      totalAttacks: total,
-      attacksBlocked: blocked,
-      falseAllows,
-      falseBlocks,
-      successRate
-    };
   }
 }
 

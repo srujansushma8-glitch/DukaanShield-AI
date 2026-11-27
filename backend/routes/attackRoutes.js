@@ -6,6 +6,7 @@ import { runGradualDriftTest } from '../attacks/gradualDrift.js';
 import { runRepeatedRefundsTest } from '../attacks/repeatedRefunds.js';
 import { store } from '../data/store.js';
 import { validate, attackRunSchema, emptyBodySchema } from '../schemas.js';
+import { requireRole } from '../middleware/requireAuth.js';
 
 const router = express.Router();
 
@@ -66,7 +67,7 @@ router.get('/scenarios', (req, res) => {
   return res.json({ scenarios: ATTACK_SCENARIOS });
 });
 
-router.post('/run', validate(attackRunSchema), (req, res) => {
+router.post('/run', requireRole('Shop Owner & Administrator', 'Shop Owner'), validate(attackRunSchema), (req, res) => {
   const { attackId } = req.body || {};
 
   const scenario = ATTACK_SCENARIOS.find(s => s.id === attackId || s.index === Number(attackId));

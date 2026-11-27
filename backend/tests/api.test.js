@@ -1,7 +1,9 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import jwt from 'jsonwebtoken';
 import { app } from '../app.js';
 import { store } from '../data/store.js';
+import { db } from '../data/db.js';
 
 describe('AgntID API Integration Suite', () => {
   let server;
@@ -118,8 +120,8 @@ describe('AgntID API Integration Suite', () => {
     }
   });
 
-  // 4. Approve flow: 200 on first approve, 409 on second, 403 for another user
-  test('Approve flow: 200 on first approve, 409 on duplicate, and 403 for unauthorized tenant', async () => {
+  // 4. Approve flow: 200 on first approve, 409 on duplicate, and 404 for unauthorized tenant
+  test('Approve flow: 200 on first approve, 409 on duplicate, and 404 for unauthorized tenant', async () => {
     // Register a second user to test cross-tenant challenge isolation
     const regRes = await fetch(`${baseUrl}/api/auth/register`, {
       method: 'POST',
@@ -153,8 +155,8 @@ describe('AgntID API Integration Suite', () => {
 
     const challengeId = `CHAL-${challengedTask.taskId}`;
 
-    // A. Unauthorized user (Pooja) attempts to approve Ramesh's challenge -> 403
-    const forbiddenRes = await fetch(`${baseUrl}/api/agent/approve-challenge`, {
+    // A. Unauthorized user (Pooja) attempts to approve Ramesh's challenge -> 404
+    const notFoundRes = await fetch(`${baseUrl}/api/agent/approve-challenge`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -165,9 +167,9 @@ describe('AgntID API Integration Suite', () => {
         approved: true
       })
     });
-    assert.equal(forbiddenRes.status, 403);
-    const forbiddenData = await forbiddenRes.json();
-    assert.equal(forbiddenData.code, 'FORBIDDEN');
+    assert.equal(notFoundRes.status, 404);
+    const notFoundData = await notFoundRes.json();
+    assert.equal(notFoundData.code, 'NOT_FOUND');
 
     // B. Authorized owner (Ramesh) approves challenge -> 200
     const approveRes = await fetch(`${baseUrl}/api/agent/approve-challenge`, {
@@ -237,5 +239,216 @@ describe('AgntID API Integration Suite', () => {
     const data = await res.json();
     assert.equal(data.code, 'PAYLOAD_TOO_LARGE');
     assert.match(data.error, /exceeds maximum length of 2000 characters/i);
+  });
+
+  // 7. Multi-tenant isolation: two users see only their own history and foreign challenge gets 404
+  test('Two users see only their own history and a foreign challenge gets 404', async () => {
+    // User 1 runs instruction A
+    const u1Prompt = `Daily report check ${Date.now()}`;
+    const run1 = await fetch(`${baseUrl}/api/agent/run`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${ownerToken}`
+      },
+      body: JSON.stringify({ instruction: u1Prompt })
+    });
+    assert.equal(run1.status, 200);
+
+    // User 2 runs instruction B
+    const u2Prompt = `Stock audit verify ${Date.now()}`;
+    const run2 = await fetch(`${baseUrl}/api/agent/run`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${otherToken}`
+      },
+      body: JSON.stringify({ instruction: u2Prompt })
+    });
+    assert.equal(run2.status, 200);
+
+    // User 1 fetches history - sees u1Prompt, does NOT see u2Prompt
+    const hist1Res = await fetch(`${baseUrl}/api/agent/history`, {
+      headers: { 'Authorization': `Bearer ${ownerToken}` }
+    });
+    assert.equal(hist1Res.status, 200);
+    const hist1Data = await hist1Res.json();
+    assert.ok(Array.isArray(hist1Data.history));
+    assert.ok(hist1Data.history.some(h => h.instruction === u1Prompt), 'User 1 history should contain User 1 prompt');
+    assert.ok(!hist1Data.history.some(h => h.instruction === u2Prompt), 'User 1 history should not contain User 2 prompt');
+
+    // User 2 fetches history - sees u2Prompt, does NOT see u1Prompt
+    const hist2Res = await fetch(`${baseUrl}/api/agent/history`, {
+      headers: { 'Authorization': `Bearer ${otherToken}` }
+    });
+    assert.equal(hist2Res.status, 200);
+    const hist2Data = await hist2Res.json();
+    assert.ok(Array.isArray(hist2Data.history));
+    assert.ok(hist2Data.history.some(h => h.instruction === u2Prompt), 'User 2 history should contain User 2 prompt');
+    assert.ok(!hist2Data.history.some(h => h.instruction === u1Prompt), 'User 2 history should not contain User 1 prompt');
+
+    // User 1 triggers a challengeable run
+    const chalRun = await fetch(`${baseUrl}/api/agent/run`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${ownerToken}`
+      },
+      body: JSON.stringify({ instruction: "Prepare customer debt reminders for overdue balances" })
+    });
+    const chalRunData = await chalRun.json();
+    const task = chalRunData.tasks.find(t => t.decision === 'CHALLENGED');
+    assert.ok(task, 'Expected a challenged task for User 1');
+    const foreignChalId = `CHAL-${task.taskId}`;
+
+    // User 2 attempts to approve User 1's challenge -> 404
+    const foreignApproveRes = await fetch(`${baseUrl}/api/agent/approve-challenge`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${otherToken}`
+      },
+      body: JSON.stringify({ challengeId: foreignChalId, approved: true })
+    });
+    assert.equal(foreignApproveRes.status, 404);
+    const foreignApproveData = await foreignApproveRes.json();
+    assert.equal(foreignApproveData.code, 'NOT_FOUND');
+  });
+
+  // 8. Restart keeps a pending challenge in SQLite challenges table and it can still be approved
+  test('Restart keeps a pending challenge and it can still be approved', async () => {
+    // 1. User 1 triggers a challenged task
+    const runRes = await fetch(`${baseUrl}/api/agent/run`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${ownerToken}`
+      },
+      body: JSON.stringify({ instruction: "Prepare customer debt reminders for overdue balances" })
+    });
+    assert.equal(runRes.status, 200);
+    const runData = await runRes.json();
+    const task = runData.tasks.find(t => t.decision === 'CHALLENGED');
+    assert.ok(task, 'Expected a challenged task');
+    const challengeId = `CHAL-${task.taskId}`;
+
+    // Verify it exists in SQLite challenges table
+    const rowInDb = db.prepare('SELECT * FROM challenges WHERE id = ?').get(challengeId);
+    assert.ok(rowInDb, 'Challenge must be written through to SQLite challenges table');
+    assert.equal(rowInDb.status, 'PENDING');
+    assert.equal(rowInDb.user_id, 'usr_owner_001');
+
+    // Verify shop_data is also persisted in SQLite shop_data table
+    const shopRow = db.prepare('SELECT * FROM shop_data WHERE user_id = ?').get('usr_owner_001');
+    assert.ok(shopRow, 'Shop data must be written through to SQLite shop_data table');
+
+    // 2. Simulate server restart: clear all in-memory store Maps
+    store.userShops.clear();
+    store.userChallenges.clear();
+    store.loadedChallengeUsers.clear();
+    store.userSessions.clear();
+
+    // Verify in-memory state is empty
+    assert.equal(store.userChallenges.size, 0);
+    assert.equal(store.userShops.size, 0);
+
+    // 3. User 1 approves the challenge after restart - loads on first access from DB
+    const approveRes = await fetch(`${baseUrl}/api/agent/approve-challenge`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${ownerToken}`
+      },
+      body: JSON.stringify({
+        challengeId,
+        approved: true
+      })
+    });
+
+    assert.equal(approveRes.status, 200);
+    const approveData = await approveRes.json();
+    assert.equal(approveData.success, true);
+    assert.equal(approveData.decision, 'APPROVED_AND_EXECUTED');
+
+    // Verify write-through updated the status in SQLite challenges table to APPROVED
+    const updatedRow = db.prepare('SELECT * FROM challenges WHERE id = ?').get(challengeId);
+    assert.ok(updatedRow);
+    assert.equal(updatedRow.status, 'APPROVED');
+
+    // 4. Second approve returns 409 Conflict (idempotent after restart)
+    const secondApproveRes = await fetch(`${baseUrl}/api/agent/approve-challenge`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${ownerToken}`
+      },
+      body: JSON.stringify({
+        challengeId,
+        approved: true
+      })
+    });
+    assert.equal(secondApproveRes.status, 409);
+    const secondApproveData = await secondApproveRes.json();
+    assert.equal(secondApproveData.code, 'CONFLICT');
+  });
+
+  // 9. Role-based access control and 12h token expiration
+  test('requireRole blocks unauthorized role with 403; demo account keeps access with 12h token', async () => {
+    // 1. Verify token lifetime is reduced to 12h
+    const decodedOwner = jwt.decode(ownerToken);
+    assert.ok(decodedOwner, 'Token must be decodable');
+    const tokenLifetimeSeconds = decodedOwner.exp - decodedOwner.iat;
+    assert.equal(tokenLifetimeSeconds, 12 * 3600, 'JWT token must expire in 12 hours (43200s)');
+
+    // 2. Mint a valid JWT with an unauthorized role (Staff)
+    const unauthorizedToken = jwt.sign(
+      { id: 'usr_staff_99', email: 'staff@kirana.store', name: 'Store Staff', role: 'Staff' },
+      process.env.JWT_SECRET,
+      { expiresIn: '12h' }
+    );
+
+    // 3. User with another role gets 403 on /approve-challenge
+    const forbiddenApproveRes = await fetch(`${baseUrl}/api/agent/approve-challenge`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${unauthorizedToken}`
+      },
+      body: JSON.stringify({
+        challengeId: 'CHAL-TEST-99',
+        approved: true
+      })
+    });
+    assert.equal(forbiddenApproveRes.status, 403, 'A token with another role must get 403 on /approve-challenge');
+    const forbiddenApproveData = await forbiddenApproveRes.json();
+    assert.equal(forbiddenApproveData.code, 'FORBIDDEN');
+
+    // 4. User with another role gets 403 on /attack/run
+    const forbiddenAttackRes = await fetch(`${baseUrl}/api/attack/run`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${unauthorizedToken}`
+      },
+      body: JSON.stringify({
+        attackId: 'attack-1'
+      })
+    });
+    assert.equal(forbiddenAttackRes.status, 403, 'A token with another role must get 403 on /attack/run');
+    const forbiddenAttackData = await forbiddenAttackRes.json();
+    assert.equal(forbiddenAttackData.code, 'FORBIDDEN');
+
+    // 5. Demo owner keeps access on /attack/run -> 200 OK
+    const ownerAttackRes = await fetch(`${baseUrl}/api/attack/run`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${ownerToken}`
+      },
+      body: JSON.stringify({
+        attackId: 'attack-1'
+      })
+    });
+    assert.equal(ownerAttackRes.status, 200, 'Demo owner account must keep access to /attack/run');
   });
 });

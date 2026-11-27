@@ -10,11 +10,23 @@ import { refundTool } from '../tools/refundTool.js';
 import { store } from '../data/store.js';
 import { getUserByIdFromDb } from '../data/db.js';
 import { validate, agentRunSchema, approveChallengeSchema } from '../schemas.js';
+import { requireRole } from '../middleware/requireAuth.js';
 
 const router = express.Router();
 
-let executionHistory = [];
-const challengesMap = new Map();
+const userExecutionHistories = new Map();
+
+function getUserHistory(userId) {
+  const uid = userId || 'anonymous';
+  if (!userExecutionHistories.has(uid)) {
+    userExecutionHistories.set(uid, []);
+  }
+  return userExecutionHistories.get(uid);
+}
+
+function getUserChallenges(userId) {
+  return store.getUserChallenges(userId);
+}
 
 router.post('/run', validate(agentRunSchema), async (req, res) => {
   const { instruction } = req.body || {};
@@ -94,7 +106,7 @@ router.post('/run', validate(agentRunSchema), async (req, res) => {
         resolved: false
       };
 
-      challengesMap.set(challengeObj.challengeId, challengeObj);
+      store.saveChallenge(challengeObj);
       sessionState.pendingChallenges.push(challengeObj);
     } else if (authResult.decision === "BLOCKED") {
       executionStatus = "BLOCKED_BY_POLICY";
@@ -131,13 +143,14 @@ router.post('/run', validate(agentRunSchema), async (req, res) => {
     tasks: evaluatedTasks
   };
 
-  executionHistory.unshift(runSummary);
-  if (executionHistory.length > 50) executionHistory.pop();
+  const userHistory = getUserHistory(req.user?.id);
+  userHistory.unshift(runSummary);
+  if (userHistory.length > 50) userHistory.pop();
 
   return res.json(runSummary);
 });
 
-router.post('/approve-challenge', validate(approveChallengeSchema), (req, res) => {
+router.post('/approve-challenge', requireRole('Shop Owner & Administrator', 'Shop Owner'), validate(approveChallengeSchema), (req, res) => {
   const { challengeId, approved } = req.body || {};
 
   if (!challengeId || typeof challengeId !== 'string') {
@@ -148,32 +161,19 @@ router.post('/approve-challenge', validate(approveChallengeSchema), (req, res) =
     return res.status(400).json({ error: "Field 'approved' must be a boolean.", code: "BAD_REQUEST" });
   }
 
-  // 1. Locate challenge in challengesMap or across sessions
-  let challenge = challengesMap.get(challengeId);
+  // 1. Locate challenge in caller's challenges
+  let challenge = store.getChallenge(challengeId, req.user?.id);
   if (!challenge) {
     const sessionState = store.getSessionState(req.user?.id);
     challenge = sessionState.pendingChallenges?.find(c => c.challengeId === challengeId);
   }
-  if (!challenge) {
-    for (const session of store.userSessions.values()) {
-      const c = session.pendingChallenges?.find(p => p.challengeId === challengeId);
-      if (c) {
-        challenge = c;
-        break;
-      }
-    }
-  }
 
-  if (!challenge) {
+  // A challenge ID owned by someone else or nonexistent returns 404 (not 403)
+  if (!challenge || (challenge.ownerId && challenge.ownerId !== req.user?.id)) {
     return res.status(404).json({ error: "Challenge request not found.", code: "NOT_FOUND" });
   }
 
-  // 2. Authorization check: only challenge's owner can resolve it
-  if (challenge.ownerId && challenge.ownerId !== req.user?.id) {
-    return res.status(403).json({ error: "Forbidden: You do not have permission to resolve this challenge.", code: "FORBIDDEN" });
-  }
-
-  // 3. Idempotency check: second approve or resolution returns 409
+  // 2. Idempotency check: second approve or resolution returns 409
   if (challenge.status === 'APPROVED' || challenge.status === 'REJECTED' || challenge.resolved) {
     return res.status(409).json({ error: "Challenge has already been resolved.", code: "CONFLICT" });
   }
@@ -190,6 +190,7 @@ router.post('/approve-challenge', validate(approveChallengeSchema), (req, res) =
   if (approved) {
     challenge.status = 'APPROVED';
     challenge.resolved = true;
+    store.saveChallenge(challenge);
 
     store.addAuditLog({
       action: "owner.approve_challenge",
@@ -221,6 +222,7 @@ router.post('/approve-challenge', validate(approveChallengeSchema), (req, res) =
   } else {
     challenge.status = 'REJECTED';
     challenge.resolved = true;
+    store.saveChallenge(challenge);
 
     store.addAuditLog({
       action: "owner.reject_challenge",
@@ -241,12 +243,11 @@ router.post('/approve-challenge', validate(approveChallengeSchema), (req, res) =
 });
 
 router.get('/history', (req, res) => {
-  return res.json({ history: executionHistory });
+  return res.json({ history: getUserHistory(req.user?.id) });
 });
 
 router.get('/pending-challenges', (req, res) => {
-  const sessionState = store.getSessionState(req.user?.id);
-  const pending = (sessionState.pendingChallenges || []).filter(c => c.status === 'PENDING' && !c.resolved);
+  const pending = store.getPendingChallenges(req.user?.id);
   return res.json({ pendingChallenges: pending });
 });
 

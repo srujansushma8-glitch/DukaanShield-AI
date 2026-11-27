@@ -82,6 +82,8 @@ router.put('/settings', (req, res) => {
     shopData.settings = { ...shopData.settings, ...settings };
   }
 
+  store.setShopData(req.user?.id, shopData);
+
   store.addAuditLog({
     action: "settings.update",
     tool: "AgntID_Settings",

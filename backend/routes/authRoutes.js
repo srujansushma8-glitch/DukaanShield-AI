@@ -30,7 +30,7 @@ router.post('/login', validate(loginSchema), (req, res) => {
   const token = jwt.sign(
     { id: user.id, email: user.email, name: user.name, role: user.role },
     getJwtSecret(),
-    { expiresIn: '7d' }
+    { expiresIn: '12h' }
   );
 
   store.addAuditLog({
@@ -89,7 +89,7 @@ router.post('/register', validate(registerSchema), (req, res) => {
   const token = jwt.sign(
     { id: newUser.id, email: newUser.email, name: newUser.name, role: newUser.role },
     getJwtSecret(),
-    { expiresIn: '7d' }
+    { expiresIn: '12h' }
   );
 
   store.addAuditLog({

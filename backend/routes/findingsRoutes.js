@@ -5,7 +5,7 @@ const router = express.Router();
 
 router.get('/', (req, res) => {
   const { severity, decision } = req.query;
-  let findings = store.findings;
+  let findings = store.getFindings(req.user?.id);
 
   if (severity && severity !== 'ALL') {
     findings = findings.filter(f => f.severity.toLowerCase() === severity.toLowerCase());
@@ -22,13 +22,13 @@ router.get('/', (req, res) => {
   }
 
   return res.json({
-    metrics: store.getMetrics(),
+    metrics: store.getMetrics(req.user?.id),
     findings
   });
 });
 
 router.get('/export-csv', (req, res) => {
-  const findings = store.findings;
+  const findings = store.getFindings(req.user?.id);
   const headers = ["Finding ID", "Attack Name", "Declared Intent", "Requested Action", "Expected Decision", "Actual Decision", "Correct Verdict", "Severity", "Policy Rule", "Suggested Fix", "Timestamp"];
   
   const rows = findings.map(f => [
@@ -53,12 +53,12 @@ router.get('/export-csv', (req, res) => {
 });
 
 router.get('/report', (req, res) => {
-  const metrics = store.getMetrics();
-  const findings = store.findings;
+  const metrics = store.getMetrics(req.user?.id);
+  const findings = store.getFindings(req.user?.id);
 
   const report = {
     title: "AgntID Security Intelligence & Audit Report",
-    organization: store.shopData.shop.name,
+    organization: store.getShopData(req.user?.id).shop.name,
     generatedAt: new Date().toISOString(),
     engineVersion: "AgntID Core v2.4 (Intent-Aware)",
     executiveSummary: `The AgntID engine was evaluated across ${metrics.totalAttacks} dynamic adversary scenarios including prompt injection, poisoned supplier invoices, multi-stage data exfiltration, gradual intent drift, and cumulative refund abuse. Overall security success rate is ${metrics.successRate}%, successfully blocking ${metrics.attacksBlocked} unauthorized or privilege-escalating operations.`,
