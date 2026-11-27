@@ -1,4 +1,5 @@
 import { initialShopData } from './mockShopData.js';
+import { getAuditLogsFromDb, insertAuditLogToDb } from './db.js';
 
 class DataStore {
   constructor() {
@@ -7,44 +8,6 @@ class DataStore {
 
   reset() {
     this.shopData = JSON.parse(JSON.stringify(initialShopData));
-    this.auditLogs = [
-      {
-        id: "AUD-1001",
-        timestamp: new Date(Date.now() - 3600000 * 3).toISOString(),
-        action: "system.diagnostic_init",
-        tool: "AgntID_Core",
-        intent: "System startup and policy validation",
-        decision: "ALLOWED",
-        riskLevel: "LOW",
-        reason: "Engine initialized with 6 deterministic tool policies.",
-        sessionId: "sess_sys_boot",
-        policyRule: "RULE_SYSTEM_INIT"
-      },
-      {
-        id: "AUD-1002",
-        timestamp: new Date(Date.now() - 3600000 * 2).toISOString(),
-        action: "sales.read_summary",
-        tool: "SalesTool",
-        intent: "Morning sales tally",
-        decision: "ALLOWED",
-        riskLevel: "LOW",
-        reason: "Read-only aggregate revenue query without PII access.",
-        sessionId: "sess_morning_01",
-        policyRule: "RULE_SALES_AGGREGATE_READ"
-      },
-      {
-        id: "AUD-1003",
-        timestamp: new Date(Date.now() - 3600000 * 1).toISOString(),
-        action: "vendor.update_bank_details",
-        tool: "SupplierTool",
-        intent: "Supplier invoice reconciliation",
-        decision: "BLOCKED",
-        riskLevel: "CRITICAL",
-        reason: "Unauthorized privilege escalation: modifying supplier payout credentials during invoice processing is blocked.",
-        sessionId: "sess_invoice_scan",
-        policyRule: "RULE_SUPPLIER_BANK_LOCK"
-      }
-    ];
 
     this.sessionState = {
       sessionId: `sess_${Date.now()}`,
@@ -71,16 +34,18 @@ class DataStore {
     ];
   }
 
+  get auditLogs() {
+    return getAuditLogsFromDb();
+  }
+
   addAuditLog(entry) {
     const log = {
-      id: `AUD-${Date.now().toString().slice(-6)}`,
-      timestamp: new Date().toISOString(),
-      sessionId: this.sessionState.sessionId,
+      id: entry.id || `AUD-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 6)}`,
+      timestamp: entry.timestamp || new Date().toISOString(),
+      sessionId: entry.sessionId || this.sessionState.sessionId,
       ...entry
     };
-    this.auditLogs.unshift(log);
-    // Keep max 500 logs
-    if (this.auditLogs.length > 500) this.auditLogs.pop();
+    insertAuditLogToDb(log);
     return log;
   }
 

@@ -1,5 +1,6 @@
 import express from 'express';
 import { authorizationEngine } from '../agntid/authorizationEngine.js';
+import { planTasks } from '../agntid/planner.js';
 import { salesTool } from '../tools/salesTool.js';
 import { inventoryTool } from '../tools/inventoryTool.js';
 import { customerTool } from '../tools/customerTool.js';
@@ -11,11 +12,15 @@ const router = express.Router();
 
 let executionHistory = [];
 
-router.post('/run', (req, res) => {
-  const { instruction } = req.body;
+router.post('/run', async (req, res) => {
+  const { instruction } = req.body || {};
 
-  if (!instruction || !instruction.trim()) {
-    return res.status(400).json({ error: "Instruction prompt cannot be empty." });
+  if (!instruction || typeof instruction !== 'string' || !instruction.trim()) {
+    return res.status(400).json({ error: "Instruction prompt cannot be empty.", code: "BAD_REQUEST" });
+  }
+
+  if (instruction.length > 2000) {
+    return res.status(413).json({ error: "Instruction exceeds maximum length of 2000 characters.", code: "PAYLOAD_TOO_LARGE" });
   }
 
   const runId = `RUN-${Date.now().toString().slice(-6)}`;
@@ -32,64 +37,8 @@ router.post('/run', (req, res) => {
     policyRule: "RULE_AGENT_INSTRUCTION_INGEST"
   });
 
-  // Task Decomposition into structured actions
-  const proposedTasks = [
-    {
-      taskId: `${runId}-T1`,
-      name: "Check Sales",
-      category: "SALES",
-      tool: "SalesTool",
-      operation: "get_daily_summary",
-      intent: "Check today's sales and daily revenue totals",
-      declaredAction: "SalesTool.get_daily_summary(date='today')",
-      executor: () => salesTool.getDailySummary()
-    },
-    {
-      taskId: `${runId}-T2`,
-      name: "Low Stock Alerts",
-      category: "STOCK",
-      tool: "InventoryTool",
-      operation: "query_low_stock",
-      intent: "Find items running low in inventory",
-      declaredAction: "InventoryTool.query_low_stock(threshold=5)",
-      executor: () => inventoryTool.getLowStock()
-    },
-    {
-      taskId: `${runId}-T3`,
-      name: "Payment Reminders",
-      category: "CUSTOMERS",
-      tool: "WhatsAppTool",
-      operation: "send_payment_reminder",
-      intent: "Prepare customer debt reminders for overdue balances",
-      declaredAction: "WhatsAppTool.send_payment_reminder(scope='dues_only')",
-      executor: () => whatsappTool.prepareReminders()
-    },
-    {
-      taskId: `${runId}-T4`,
-      name: "Supplier Orders",
-      category: "SUPPLIERS",
-      tool: "SupplierTool",
-      operation: "draft_purchase_order",
-      intent: "Prepare tomorrow's supplier orders without modifying bank details",
-      declaredAction: "SupplierTool.draft_purchase_order(items='low_stock')",
-      executor: () => supplierTool.draftPurchaseOrders()
-    }
-  ];
-
-  // If prompt mentions bank updates or refunds, inject corresponding proposed action
-  const promptLower = instruction.toLowerCase();
-  if (promptLower.includes("bank") || promptLower.includes("ifsc") || promptLower.includes("account")) {
-    proposedTasks.push({
-      taskId: `${runId}-T5`,
-      name: "Supplier Bank Detail Edit",
-      category: "SUPPLIERS",
-      tool: "SupplierTool",
-      operation: "update_bank_details",
-      intent: "Update vendor settlement bank credentials",
-      declaredAction: "SupplierTool.update_bank_details(beneficiary='9847291849')",
-      executor: () => ({ status: "Failed - Blocked" })
-    });
-  }
+  // Task Decomposition into structured actions via AgntID Planner
+  const proposedTasks = await planTasks(instruction, runId);
 
   // Evaluate every proposed task through AgntID
   const evaluatedTasks = proposedTasks.map(task => {
@@ -170,11 +119,19 @@ router.post('/run', (req, res) => {
 });
 
 router.post('/approve-challenge', (req, res) => {
-  const { challengeId, approved } = req.body;
+  const { challengeId, approved } = req.body || {};
+
+  if (!challengeId || typeof challengeId !== 'string') {
+    return res.status(400).json({ error: "A valid challengeId string is required.", code: "BAD_REQUEST" });
+  }
+
+  if (typeof approved !== 'boolean') {
+    return res.status(400).json({ error: "Field 'approved' must be a boolean.", code: "BAD_REQUEST" });
+  }
 
   const challengeIdx = store.sessionState.pendingChallenges.findIndex(c => c.challengeId === challengeId);
   if (challengeIdx === -1) {
-    return res.status(404).json({ error: "Challenge request not found or already resolved." });
+    return res.status(404).json({ error: "Challenge request not found or already resolved.", code: "NOT_FOUND" });
   }
 
   const challenge = store.sessionState.pendingChallenges[challengeIdx];

@@ -66,11 +66,16 @@ router.get('/scenarios', (req, res) => {
 });
 
 router.post('/run', (req, res) => {
-  const { attackId } = req.body;
+  const { attackId } = req.body || {};
+
+  if (!attackId) {
+    return res.status(400).json({ error: "Field 'attackId' is required.", code: "BAD_REQUEST" });
+  }
+
   const scenario = ATTACK_SCENARIOS.find(s => s.id === attackId || s.index === Number(attackId));
 
   if (!scenario) {
-    return res.status(404).json({ error: `Attack scenario '${attackId}' not found.` });
+    return res.status(404).json({ error: `Attack scenario '${attackId}' not found.`, code: "NOT_FOUND" });
   }
 
   const result = scenario.runner();

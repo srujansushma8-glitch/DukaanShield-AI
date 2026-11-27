@@ -1,21 +1,11 @@
 import express from 'express';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 import { store } from '../data/store.js';
+import { getUserByEmailFromDb, getUserByIdFromDb, insertUserToDb } from '../data/db.js';
 
 const router = express.Router();
-
-// Demo credentials
-const DEMO_USER = {
-  id: "usr_owner_001",
-  email: "owner@dukaanshield.ai",
-  password: "Shop@123",
-  name: "Ramesh Sharma",
-  shopName: "Sharma Kirana & General Store",
-  role: "Shop Owner & Administrator",
-  phone: "+91 98765 43210"
-};
-
-// In-memory registered users table
-const registeredUsers = [DEMO_USER];
+const JWT_SECRET = process.env.JWT_SECRET || 'dukaanshield-agntid-secret-key';
 
 router.post('/login', (req, res) => {
   const { email, password } = req.body;
@@ -24,16 +14,17 @@ router.post('/login', (req, res) => {
     return res.status(400).json({ error: "Email and password are required." });
   }
 
-  const user = registeredUsers.find(
-    u => u.email.toLowerCase() === email.toLowerCase().trim() && u.password === password
-  );
+  const user = getUserByEmailFromDb(email.trim());
 
-  if (!user) {
+  if (!user || !bcrypt.compareSync(password, user.password)) {
     return res.status(401).json({ error: "Invalid credentials. Use demo account: owner@dukaanshield.ai / Shop@123" });
   }
 
-  // Create mock token session
-  const token = `ds_token_${Date.now()}_${Buffer.from(user.email).toString('base64')}`;
+  const token = jwt.sign(
+    { id: user.id, email: user.email, role: user.role },
+    JWT_SECRET,
+    { expiresIn: '7d' }
+  );
 
   store.addAuditLog({
     action: "auth.login",
@@ -65,10 +56,12 @@ router.post('/register', (req, res) => {
     return res.status(400).json({ error: "All required fields must be filled." });
   }
 
-  const existing = registeredUsers.find(u => u.email.toLowerCase() === email.toLowerCase().trim());
+  const existing = getUserByEmailFromDb(email.trim());
   if (existing) {
     return res.status(409).json({ error: "An account with this email already exists." });
   }
+
+  const hashedPassword = bcrypt.hashSync(password, 10);
 
   const newUser = {
     id: `usr_${Date.now()}`,
@@ -76,11 +69,11 @@ router.post('/register', (req, res) => {
     shopName,
     email: email.trim(),
     phone: phone || "+91 90000 00000",
-    password,
+    password: hashedPassword,
     role: "Shop Owner"
   };
 
-  registeredUsers.push(newUser);
+  insertUserToDb(newUser);
 
   // Update store shop details
   store.shopData.shop.name = shopName;
@@ -88,7 +81,11 @@ router.post('/register', (req, res) => {
   store.shopData.shop.email = email;
   if (phone) store.shopData.shop.phone = phone;
 
-  const token = `ds_token_${Date.now()}_${Buffer.from(newUser.email).toString('base64')}`;
+  const token = jwt.sign(
+    { id: newUser.id, email: newUser.email, role: newUser.role },
+    JWT_SECRET,
+    { expiresIn: '7d' }
+  );
 
   store.addAuditLog({
     action: "auth.register",
@@ -115,20 +112,32 @@ router.post('/register', (req, res) => {
 
 router.get('/me', (req, res) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ds_token_")) {
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(401).json({ error: "Unauthorized session." });
   }
 
-  return res.json({
-    user: {
-      id: DEMO_USER.id,
-      email: store.shopData.shop.email || DEMO_USER.email,
-      name: store.shopData.shop.owner || DEMO_USER.name,
-      shopName: store.shopData.shop.name || DEMO_USER.shopName,
-      role: DEMO_USER.role,
-      phone: store.shopData.shop.phone || DEMO_USER.phone
+  const token = authHeader.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const user = getUserByIdFromDb(decoded.id) || getUserByEmailFromDb(decoded.email);
+
+    if (!user) {
+      return res.status(401).json({ error: "User not found." });
     }
-  });
+
+    return res.json({
+      user: {
+        id: user.id,
+        email: store.shopData.shop.email || user.email,
+        name: store.shopData.shop.owner || user.name,
+        shopName: store.shopData.shop.name || user.shopName,
+        role: user.role,
+        phone: store.shopData.shop.phone || user.phone
+      }
+    });
+  } catch (err) {
+    return res.status(401).json({ error: "Unauthorized: Invalid or expired token." });
+  }
 });
 
 router.post('/logout', (req, res) => {
