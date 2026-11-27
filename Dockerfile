@@ -30,6 +30,11 @@ RUN npm ci --omit=dev
 COPY backend/ ./backend/
 COPY --from=builder /app/dist ./dist
 
+# Create volume mount directory for persistent SQLite DB with node user permissions
+RUN mkdir -p /var/data && chown -R node:node /var/data /app
+
 EXPOSE 5000
+
+USER node
 
 CMD ["npm", "run", "start"]

@@ -461,10 +461,12 @@ describe('AgntID API Integration Suite', () => {
     });
     assert.equal(res.status, 200);
     const data = await res.json();
-    assert.equal(data.totalPayloads, 85);
-    assert.equal(data.malicious.detectionRate, '100.0%');
+    assert.equal(data.totalPayloads, 130);
+    assert.ok(data.heldoutSet, 'Must have heldoutSet');
+    assert.equal(data.malicious.detectionRate, '95.3%');
     assert.equal(data.benign.falsePositiveRate, '0.0%');
     assert.equal(data.originalSet.malicious.detectionRate, '100.0%');
     assert.equal(data.newSet.malicious.detectionRate, '100.0%');
+    assert.equal(data.heldoutSet.malicious.detectionRate, '86.7%');
   });
 });

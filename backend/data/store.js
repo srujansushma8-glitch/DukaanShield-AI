@@ -8,7 +8,10 @@ import {
   saveShopDataToDb,
   getChallengeFromDb,
   getChallengesByUserFromDb,
-  saveChallengeToDb
+  saveChallengeToDb,
+  getSessionFromDb,
+  saveSessionToDb,
+  clearSessionsInDb
 } from './db.js';
 
 export const userContext = new AsyncLocalStorage();
@@ -21,7 +24,7 @@ class DataStore {
     this.userChallenges = new Map();
     this.loadedChallengeUsers = new Set();
     this.defaultUserId = 'usr_owner_001';
-    this.reset();
+    this.seedUserShop(this.defaultUserId);
   }
 
   reset() {
@@ -30,6 +33,7 @@ class DataStore {
     this.userFindings.clear();
     this.userChallenges.clear();
     this.loadedChallengeUsers.clear();
+    clearSessionsInDb();
 
     // Seed default demo owner shop
     this.seedUserShop(this.defaultUserId);
@@ -130,31 +134,90 @@ class DataStore {
     return Array.from(userMap.values()).filter(c => c.status === 'PENDING' && !c.resolved && (!c.ownerId || c.ownerId === uid));
   }
 
+  _createSessionProxy(uid, rawSession) {
+    const writeThrough = (target) => {
+      saveSessionToDb(uid, target);
+    };
+
+    const wrapActionHistory = (historyArr) => {
+      const arr = Array.isArray(historyArr) ? historyArr.slice(-50) : [];
+      return new Proxy(arr, {
+        get(target, prop, receiver) {
+          const val = Reflect.get(target, prop, receiver);
+          if (typeof val === 'function') {
+            if (['push', 'unshift', 'splice'].includes(prop)) {
+              return function(...args) {
+                const res = val.apply(target, args);
+                if (target.length > 50) {
+                  target.splice(0, target.length - 50);
+                }
+                writeThrough(rawSession);
+                return res;
+              };
+            }
+            return val.bind(target);
+          }
+          return val;
+        },
+        set(target, prop, value, receiver) {
+          const res = Reflect.set(target, prop, value, receiver);
+          if (prop !== 'length') {
+            if (target.length > 50) {
+              target.splice(0, target.length - 50);
+            }
+            writeThrough(rawSession);
+          }
+          return res;
+        }
+      });
+    };
+
+    rawSession.actionHistory = wrapActionHistory(rawSession.actionHistory);
+
+    const sessionProxy = new Proxy(rawSession, {
+      set(target, prop, value, receiver) {
+        if (prop === 'actionHistory') {
+          target.actionHistory = wrapActionHistory(value);
+          writeThrough(target);
+          return true;
+        }
+
+        const res = Reflect.set(target, prop, value, receiver);
+        if (prop === 'cumulativeRefunds' || prop === 'refundCount') {
+          writeThrough(target);
+        }
+        return res;
+      }
+    });
+
+    return sessionProxy;
+  }
+
   getSessionState(userId) {
     const uid = userId || this.currentUserId;
     if (!this.userSessions.has(uid)) {
-      this.userSessions.set(uid, {
+      const fromDb = getSessionFromDb(uid);
+      const rawSession = {
         activeIntent: "Daily Store Management",
-        actionHistory: [],
+        actionHistory: fromDb ? fromDb.actionHistory.slice(-50) : [],
         pendingChallenges: [],
         splitActionPendingExport: false,
         gradualDriftHistory: [],
-        cumulativeRefunds: 0,
-        refundCount: 0,
+        cumulativeRefunds: fromDb ? fromDb.cumulativeRefunds : 0,
+        refundCount: fromDb ? fromDb.refundCount : 0,
         sessionId: `sess_${Date.now().toString().slice(-6)}`
-      });
+      };
+      const sessionProxy = this._createSessionProxy(uid, rawSession);
+      this.userSessions.set(uid, sessionProxy);
     }
-    const session = this.userSessions.get(uid);
-    if (!session.actionHistory) session.actionHistory = [];
-    if (!session.pendingChallenges) session.pendingChallenges = [];
-    if (session.cumulativeRefunds === undefined) session.cumulativeRefunds = 0;
-    if (session.refundCount === undefined) session.refundCount = 0;
-    return session;
+    return this.userSessions.get(uid);
   }
 
   setSessionState(userId, state) {
     const uid = userId || this.currentUserId;
-    this.userSessions.set(uid, state);
+    const sessionProxy = this._createSessionProxy(uid, state);
+    this.userSessions.set(uid, sessionProxy);
+    saveSessionToDb(uid, state);
   }
 
   // Backwards-compatible global accessors mapped to active user context

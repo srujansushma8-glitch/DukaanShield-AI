@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: dukaanshield-ai
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    region: oregon
+    disk:
+      name: dukaanshield-data
+      mountPath: /var/data
+      sizeGB: 1
+    healthCheckPath: /api/ready
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: DB_PATH
+        value: /var/data/dukaanshield.db
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ORIGINS
+        value: https://dukaanshield-ai.onrender.com
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-3-5-sonnet-latest

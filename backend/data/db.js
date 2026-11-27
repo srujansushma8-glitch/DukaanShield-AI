@@ -38,7 +38,8 @@ db.exec(`
     decision TEXT NOT NULL,
     risk_level TEXT NOT NULL,
     reason TEXT NOT NULL,
-    policy_rule TEXT NOT NULL
+    policy_rule TEXT NOT NULL,
+    blocked_layer TEXT
   );
 
   CREATE TABLE IF NOT EXISTS shop_data (
@@ -52,7 +53,20 @@ db.exec(`
     status TEXT NOT NULL,
     json TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    user_id TEXT PRIMARY KEY,
+    cumulative_refunds REAL NOT NULL DEFAULT 0,
+    refund_count INTEGER NOT NULL DEFAULT 0,
+    action_history TEXT NOT NULL DEFAULT '[]'
+  );
 `);
+
+try {
+  db.exec(`ALTER TABLE audit_logs ADD COLUMN blocked_layer TEXT;`);
+} catch (_) {
+  // column already exists
+}
 
 // Seed default demo user if not present
 const existingDemo = db.prepare('SELECT id FROM users WHERE email = ?').get('owner@dukaanshield.ai');
@@ -148,14 +162,15 @@ export function getAuditLogsFromDb() {
     decision: r.decision,
     riskLevel: r.risk_level,
     reason: r.reason,
-    policyRule: r.policy_rule
+    policyRule: r.policy_rule,
+    blockedLayer: r.blocked_layer || undefined
   }));
 }
 
 export function insertAuditLogToDb(log) {
   const stmt = db.prepare(`
-    INSERT OR REPLACE INTO audit_logs (id, timestamp, session_id, action, tool, intent, decision, risk_level, reason, policy_rule)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO audit_logs (id, timestamp, session_id, action, tool, intent, decision, risk_level, reason, policy_rule, blocked_layer)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   stmt.run(
     log.id,
@@ -167,7 +182,8 @@ export function insertAuditLogToDb(log) {
     log.decision,
     log.riskLevel,
     log.reason,
-    log.policyRule || 'RULE_DEFAULT'
+    log.policyRule || 'RULE_DEFAULT',
+    log.blockedLayer || log.blocked_layer || null
   );
   return log;
 }
@@ -269,4 +285,35 @@ export function saveChallengeToDb(challenge) {
     VALUES (?, ?, ?, ?)
   `);
   stmt.run(id, userId, status, JSON.stringify(challenge));
+}
+
+export function getSessionFromDb(userId) {
+  const row = db.prepare('SELECT * FROM sessions WHERE user_id = ?').get(userId);
+  if (!row) return null;
+  let actionHistory = [];
+  try {
+    actionHistory = JSON.parse(row.action_history || '[]');
+  } catch {
+    actionHistory = [];
+  }
+  return {
+    cumulativeRefunds: Number(row.cumulative_refunds) || 0,
+    refundCount: Number(row.refund_count) || 0,
+    actionHistory: Array.isArray(actionHistory) ? actionHistory.slice(-50) : []
+  };
+}
+
+export function saveSessionToDb(userId, session) {
+  const cumulativeRefunds = Number(session?.cumulativeRefunds) || 0;
+  const refundCount = Number(session?.refundCount) || 0;
+  const history = Array.isArray(session?.actionHistory) ? Array.from(session.actionHistory).slice(-50) : [];
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO sessions (user_id, cumulative_refunds, refund_count, action_history)
+    VALUES (?, ?, ?, ?)
+  `);
+  stmt.run(userId, cumulativeRefunds, refundCount, JSON.stringify(history));
+}
+
+export function clearSessionsInDb() {
+  db.prepare('DELETE FROM sessions').run();
 }

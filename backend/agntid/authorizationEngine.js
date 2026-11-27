@@ -2,6 +2,7 @@ import { POLICIES } from './policies.js';
 import { IntentTracker } from './intentTracker.js';
 import { calculateRisk } from './riskAssessment.js';
 import { isPromptInjection } from './injectionPatterns.js';
+import { classifyWithAnthropic } from './anthropicClassifier.js';
 import { store, userContext } from '../data/store.js';
 
 export class AuthorizationEngine {
@@ -21,16 +22,34 @@ export class AuthorizationEngine {
     // 1. Untrusted context / Prompt Injection Check
     // Normalize input (lowercase, unicode NFKC, strip zero-width chars) and match regex pattern list
     const rawInstruction = proposedAction.rawInstruction || proposedAction.userPrompt || "";
+    let injectionBlocked = false;
+    let blockedLayer = null;
+    let blockReason = "Prompt injection attempt detected in untrusted input stream. Autonomous execution aborted.";
+
     if (isPromptInjection(rawInstruction)) {
-      
+      injectionBlocked = true;
+      blockedLayer = "regex_pattern_shield";
+    } else if (rawInstruction) {
+      // After regex check passes, call Anthropic classifier (model from ANTHROPIC_MODEL, 3s timeout)
+      // If key is unset, errors, or times out, classifyWithAnthropic returns { injection: false, skipped/error: true }
+      const classifierRes = classifyWithAnthropic(rawInstruction);
+      if (classifierRes && classifierRes.injection) {
+        injectionBlocked = true;
+        blockedLayer = "anthropic_classifier";
+        blockReason = "Prompt injection detected by Anthropic AI security classifier. Autonomous execution aborted.";
+      }
+    }
+
+    if (injectionBlocked) {
       const decision = {
         decision: "BLOCKED",
-        reason: "Prompt injection attempt detected in untrusted input stream. Autonomous execution aborted.",
+        reason: blockReason,
         declared_intent: intent,
         requested_action: `${proposedAction.tool}.${proposedAction.operation}`,
         risk_level: "CRITICAL",
         approval_required: false,
         policy_rule: "RULE_PROMPT_INJECTION_SHIELD",
+        blocked_layer: blockedLayer,
         timestamp
       };
 
@@ -42,6 +61,7 @@ export class AuthorizationEngine {
         riskLevel: decision.risk_level,
         reason: decision.reason,
         policyRule: decision.policy_rule,
+        blockedLayer,
         sessionId: sessionState.sessionId
       });
 
