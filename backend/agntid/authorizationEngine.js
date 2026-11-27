@@ -1,7 +1,8 @@
 import { POLICIES } from './policies.js';
 import { IntentTracker } from './intentTracker.js';
 import { calculateRisk } from './riskAssessment.js';
-import { store } from '../data/store.js';
+import { isPromptInjection } from './injectionPatterns.js';
+import { store, userContext } from '../data/store.js';
 
 export class AuthorizationEngine {
   constructor() {
@@ -10,18 +11,17 @@ export class AuthorizationEngine {
 
   evaluate(proposedAction, sessionContext = {}) {
     const timestamp = new Date().toISOString();
-    const tracker = new IntentTracker(store.sessionState);
+    const ownerId = proposedAction.ownerId || sessionContext.ownerId || sessionContext.userId || userContext.getStore()?.userId || 'usr_owner_001';
+    const sessionState = store.getSessionState(ownerId);
+    const settings = store.getShopData(ownerId).settings;
+    const tracker = new IntentTracker(sessionState);
 
-    const intent = proposedAction.intent || store.sessionState.activeIntent || "General shop operations";
-    const settings = store.shopData.settings;
+    const intent = proposedAction.intent || sessionState.activeIntent || "General shop operations";
 
     // 1. Untrusted context / Prompt Injection Check
-    // If incoming payload contains prompt injection markers attempting unauthorized overrides
-    const rawInstruction = (proposedAction.rawInstruction || proposedAction.userPrompt || "").toLowerCase();
-    if (rawInstruction.includes("ignore previous instructions") ||
-        rawInstruction.includes("system prompt override") ||
-        rawInstruction.includes("disregard all policies") ||
-        rawInstruction.includes("bypass agntid")) {
+    // Normalize input (lowercase, unicode NFKC, strip zero-width chars) and match regex pattern list
+    const rawInstruction = proposedAction.rawInstruction || proposedAction.userPrompt || "";
+    if (isPromptInjection(rawInstruction)) {
       
       const decision = {
         decision: "BLOCKED",
@@ -41,7 +41,8 @@ export class AuthorizationEngine {
         decision: decision.decision,
         riskLevel: decision.risk_level,
         reason: decision.reason,
-        policyRule: decision.policy_rule
+        policyRule: decision.policy_rule,
+        sessionId: sessionState.sessionId
       });
 
       return decision;
@@ -68,14 +69,15 @@ export class AuthorizationEngine {
         decision: decision.decision,
         riskLevel: decision.risk_level,
         reason: decision.reason,
-        policyRule: decision.policy_rule
+        policyRule: decision.policy_rule,
+        sessionId: sessionState.sessionId
       });
 
       return decision;
     }
 
     // 3. Gradual Intent Drift Check
-    const driftCheck = tracker.detectIntentDrift(proposedAction, store.sessionState.activeIntent);
+    const driftCheck = tracker.detectIntentDrift(proposedAction, sessionState.activeIntent);
     if (driftCheck.drifted) {
       const decision = {
         decision: "BLOCKED",
@@ -95,7 +97,8 @@ export class AuthorizationEngine {
         decision: decision.decision,
         riskLevel: decision.risk_level,
         reason: decision.reason,
-        policyRule: decision.policy_rule
+        policyRule: decision.policy_rule,
+        sessionId: sessionState.sessionId
       });
 
       return decision;
@@ -110,7 +113,7 @@ export class AuthorizationEngine {
 
     if (toolPolicy && toolPolicy.rules) {
       for (const rule of toolPolicy.rules) {
-        const res = rule.check(proposedAction, intent, store.sessionState, settings);
+        const res = rule.check(proposedAction, intent, sessionState, settings);
         if (res) {
           policyResult = res;
           appliedRuleId = rule.id;
@@ -162,7 +165,8 @@ export class AuthorizationEngine {
       decision: finalDecision.decision,
       riskLevel: finalDecision.risk_level,
       reason: finalDecision.reason,
-      policyRule: finalDecision.policy_rule
+      policyRule: finalDecision.policy_rule,
+      sessionId: sessionState.sessionId
     });
 
     return finalDecision;

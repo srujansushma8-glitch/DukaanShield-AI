@@ -30,9 +30,22 @@ router.get('/', (req, res) => {
     logs = logs.filter(l => l.riskLevel.toLowerCase() === risk.toLowerCase());
   }
 
+  const total = logs.length;
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const rawLimit = req.query.limit !== undefined ? parseInt(req.query.limit, 10) : (req.query.page !== undefined ? 10 : null);
+  const limit = rawLimit !== null ? Math.min(100, Math.max(1, rawLimit)) : null;
+
+  const data = limit !== null
+    ? logs.slice((page - 1) * limit, (page - 1) * limit + limit)
+    : logs;
+
   return res.json({
-    totalCount: logs.length,
-    logs
+    data,
+    page,
+    total,
+    // backwards-compatible properties
+    logs: data,
+    totalCount: total
   });
 });
 

@@ -5,6 +5,7 @@ import { runSplitActionTest } from '../attacks/splitAction.js';
 import { runGradualDriftTest } from '../attacks/gradualDrift.js';
 import { runRepeatedRefundsTest } from '../attacks/repeatedRefunds.js';
 import { store } from '../data/store.js';
+import { validate, attackRunSchema, emptyBodySchema } from '../schemas.js';
 
 const router = express.Router();
 
@@ -65,12 +66,8 @@ router.get('/scenarios', (req, res) => {
   return res.json({ scenarios: ATTACK_SCENARIOS });
 });
 
-router.post('/run', (req, res) => {
+router.post('/run', validate(attackRunSchema), (req, res) => {
   const { attackId } = req.body || {};
-
-  if (!attackId) {
-    return res.status(400).json({ error: "Field 'attackId' is required.", code: "BAD_REQUEST" });
-  }
 
   const scenario = ATTACK_SCENARIOS.find(s => s.id === attackId || s.index === Number(attackId));
 
@@ -88,7 +85,7 @@ router.post('/run', (req, res) => {
   });
 });
 
-router.post('/run-all', (req, res) => {
+router.post('/run-all', validate(emptyBodySchema), (req, res) => {
   const results = ATTACK_SCENARIOS.map(scenario => {
     const res = scenario.runner();
     return {
@@ -111,7 +108,7 @@ router.post('/run-all', (req, res) => {
   });
 });
 
-router.post('/reset', (req, res) => {
+router.post('/reset', validate(emptyBodySchema), (req, res) => {
   store.reset();
   return res.json({
     message: "Store state, session lineage, and findings restored to baseline.",

@@ -1,73 +1,45 @@
-import express from 'express';
-import cors from 'cors';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
-import { requireAuth } from './middleware/requireAuth.js';
-import { errorHandler } from './middleware/errorHandler.js';
-import authRoutes from './routes/authRoutes.js';
-import shopRoutes from './routes/shopRoutes.js';
-import agentRoutes from './routes/agentRoutes.js';
-import attackRoutes from './routes/attackRoutes.js';
-import findingsRoutes from './routes/findingsRoutes.js';
-import auditRoutes from './routes/auditRoutes.js';
+import { app, logger } from './app.js';
+import { db } from './data/db.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(cors({ origin: true, credentials: true }));
-app.use(express.json());
-
-// Request logging middleware
-app.use((req, res, next) => {
-  const start = Date.now();
-  res.on('finish', () => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} ${res.statusCode} - ${Date.now() - start}ms`);
-  });
-  next();
+const server = app.listen(PORT, () => {
+  logger.info({ port: PORT, msg: `[DukaanShield Backend] AgntID Server running on http://localhost:${PORT}` });
 });
 
-// API Health
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: "healthy",
-    engine: "AgntID Core v2.4",
-    timestamp: new Date().toISOString()
-  });
-});
+// 15s request timeout at server socket level
+server.requestTimeout = 15000;
 
-// Public Authentication Routes
-app.use('/api/auth', authRoutes);
+export function handleShutdown(signal = 'SIGTERM') {
+  logger.info({ signal, msg: `Received ${signal}, closing server and DB...` });
 
-// Protected Routes
-app.use('/api/shop', requireAuth, shopRoutes);
-app.use('/api/agent', requireAuth, agentRoutes);
-app.use('/api/attack', requireAuth, attackRoutes);
-app.use('/api/findings', requireAuth, findingsRoutes);
-app.use('/api/audit-logs', requireAuth, auditRoutes);
-
-// Serve static assets in production
-const distPath = path.resolve(__dirname, '../dist');
-if (process.env.NODE_ENV === 'production' || fs.existsSync(distPath)) {
-  app.use(express.static(distPath));
-  app.get('{*splat}', (req, res, next) => {
-    if (req.path.startsWith('/api')) {
-      return next();
+  server.close((err) => {
+    if (err) {
+      logger.error({ err, msg: 'Error closing HTTP server' });
+      process.exit(1);
     }
-    const indexPath = path.join(distPath, 'index.html');
-    if (fs.existsSync(indexPath)) {
-      return res.sendFile(indexPath);
+    logger.info({ msg: 'HTTP server closed' });
+
+    try {
+      if (db && db.open) {
+        db.close();
+        logger.info({ msg: 'Database connection closed' });
+      }
+      process.exit(0);
+    } catch (dbErr) {
+      logger.error({ err: dbErr, msg: 'Error closing database' });
+      process.exit(1);
     }
-    next();
   });
+
+  // Force exit after 5 seconds if graceful close hangs
+  setTimeout(() => {
+    logger.error({ msg: 'Forced shutdown after timeout' });
+    process.exit(1);
+  }, 5000).unref();
 }
 
-// Error Handling Middleware
-app.use(errorHandler);
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+process.on('SIGINT', () => handleShutdown('SIGINT'));
 
-app.listen(PORT, () => {
-  console.log(`[DukaanShield Backend] AgntID Server running on http://localhost:${PORT}`);
-});
+export { server };

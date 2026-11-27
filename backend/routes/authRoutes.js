@@ -1,18 +1,25 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { store } from '../data/store.js';
 import { getUserByEmailFromDb, getUserByIdFromDb, insertUserToDb } from '../data/db.js';
+import { validate, loginSchema, registerSchema, emptyBodySchema } from '../schemas.js';
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'dukaanshield-agntid-secret-key';
 
-router.post('/login', (req, res) => {
-  const { email, password } = req.body;
-
-  if (!email || !password) {
-    return res.status(400).json({ error: "Email and password are required." });
+function getJwtSecret() {
+  if (!process.env.JWT_SECRET) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('JWT_SECRET environment variable is required in production.');
+    }
+    process.env.JWT_SECRET = crypto.randomBytes(32).toString('hex');
   }
+  return process.env.JWT_SECRET;
+}
+
+router.post('/login', validate(loginSchema), (req, res) => {
+  const { email, password } = req.body;
 
   const user = getUserByEmailFromDb(email.trim());
 
@@ -21,8 +28,8 @@ router.post('/login', (req, res) => {
   }
 
   const token = jwt.sign(
-    { id: user.id, email: user.email, role: user.role },
-    JWT_SECRET,
+    { id: user.id, email: user.email, name: user.name, role: user.role },
+    getJwtSecret(),
     { expiresIn: '7d' }
   );
 
@@ -49,12 +56,8 @@ router.post('/login', (req, res) => {
   });
 });
 
-router.post('/register', (req, res) => {
+router.post('/register', validate(registerSchema), (req, res) => {
   const { ownerName, shopName, email, phone, password } = req.body;
-
-  if (!ownerName || !shopName || !email || !password) {
-    return res.status(400).json({ error: "All required fields must be filled." });
-  }
 
   const existing = getUserByEmailFromDb(email.trim());
   if (existing) {
@@ -75,15 +78,17 @@ router.post('/register', (req, res) => {
 
   insertUserToDb(newUser);
 
-  // Update store shop details
-  store.shopData.shop.name = shopName;
-  store.shopData.shop.owner = ownerName;
-  store.shopData.shop.email = email;
-  if (phone) store.shopData.shop.phone = phone;
+  // Seed newly registered user's shop data independently (no global overwrite)
+  store.seedUserShop(newUser.id, {
+    name: shopName,
+    owner: ownerName,
+    email: newUser.email,
+    phone: newUser.phone
+  });
 
   const token = jwt.sign(
-    { id: newUser.id, email: newUser.email, role: newUser.role },
-    JWT_SECRET,
+    { id: newUser.id, email: newUser.email, name: newUser.name, role: newUser.role },
+    getJwtSecret(),
     { expiresIn: '7d' }
   );
 
@@ -118,21 +123,22 @@ router.get('/me', (req, res) => {
 
   const token = authHeader.split(' ')[1];
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, getJwtSecret());
     const user = getUserByIdFromDb(decoded.id) || getUserByEmailFromDb(decoded.email);
 
     if (!user) {
       return res.status(401).json({ error: "User not found." });
     }
 
+    const shopData = store.getShopData(user.id);
     return res.json({
       user: {
         id: user.id,
-        email: store.shopData.shop.email || user.email,
-        name: store.shopData.shop.owner || user.name,
-        shopName: store.shopData.shop.name || user.shopName,
+        email: shopData.shop.email || user.email,
+        name: shopData.shop.owner || user.name,
+        shopName: shopData.shop.name || user.shopName,
         role: user.role,
-        phone: store.shopData.shop.phone || user.phone
+        phone: shopData.shop.phone || user.phone
       }
     });
   } catch (err) {
@@ -140,7 +146,7 @@ router.get('/me', (req, res) => {
   }
 });
 
-router.post('/logout', (req, res) => {
+router.post('/logout', validate(emptyBodySchema), (req, res) => {
   store.addAuditLog({
     action: "auth.logout",
     tool: "AgntID_Auth",
