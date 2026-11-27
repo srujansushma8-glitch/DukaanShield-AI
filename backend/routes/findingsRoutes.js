@@ -1,7 +1,36 @@
 import express from 'express';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { store } from '../data/store.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const router = express.Router();
+
+router.get('/benchmark', (req, res) => {
+  const possiblePaths = [
+    path.resolve(process.cwd(), 'benchmark/results.json'),
+    path.resolve(process.cwd(), 'backend/benchmark/results.json'),
+    path.resolve(__dirname, '../benchmark/results.json'),
+    path.resolve(__dirname, '../../benchmark/results.json')
+  ];
+
+  for (const filePath of possiblePaths) {
+    if (fs.existsSync(filePath)) {
+      try {
+        const raw = fs.readFileSync(filePath, 'utf-8');
+        const data = JSON.parse(raw);
+        return res.json(data);
+      } catch (err) {
+        // continue checking next path
+      }
+    }
+  }
+
+  return res.status(404).json({ error: 'Benchmark results not found' });
+});
 
 router.get('/', (req, res) => {
   const { severity, decision } = req.query;

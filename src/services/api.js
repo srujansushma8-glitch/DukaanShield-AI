@@ -136,6 +136,10 @@ export const api = {
       const res = await fetch(`${BASE_URL}/findings?${params}`, { headers: getHeaders() });
       return res.json();
     },
+    getBenchmark: async () => {
+      const res = await fetch(`${BASE_URL}/findings/benchmark`, { headers: getHeaders() });
+      return res.json();
+    },
     getReport: async () => {
       const res = await fetch(`${BASE_URL}/findings/report`, { headers: getHeaders() });
       return res.json();

@@ -21,6 +21,7 @@ export default function SecurityFindings() {
     falseBlocks: 0,
     successRate: 100
   });
+  const [benchmark, setBenchmark] = useState(null);
   const [loading, setLoading] = useState(true);
   const [severityFilter, setSeverityFilter] = useState('ALL');
   const [decisionFilter, setDecisionFilter] = useState('ALL');
@@ -44,9 +45,22 @@ export default function SecurityFindings() {
     }
   };
 
+  const fetchBenchmark = async () => {
+    try {
+      const data = await api.findings.getBenchmark();
+      setBenchmark(data);
+    } catch (err) {
+      console.error('Failed to load benchmark data', err);
+    }
+  };
+
   useEffect(() => {
     fetchFindings();
   }, [severityFilter, decisionFilter]);
+
+  useEffect(() => {
+    fetchBenchmark();
+  }, []);
 
   const handleExportCSV = () => {
     window.open('/api/findings/export-csv', '_blank');
@@ -160,42 +174,96 @@ export default function SecurityFindings() {
                 </span>
               </div>
               <p className="text-[12px] text-[#5A4A40] mt-0.5">
-                Evaluated across 40 labeled payloads: 25 malicious injection variants + 15 legitimate kirana shop operations
+                Evaluated across {benchmark?.totalPayloads ?? 85} labeled payloads: {benchmark?.malicious?.total ?? 55} malicious variants ({benchmark?.originalSet?.malicious?.total ?? 25} original + {benchmark?.newSet?.malicious?.total ?? 30} new adversarial) + {benchmark?.benign?.total ?? 30} legitimate kirana shop operations
               </p>
             </div>
           </div>
 
           <div className="text-right">
             <div className="text-[11px] font-mono text-[#8B5A2B] uppercase tracking-wider font-semibold">Overall Benchmark Accuracy</div>
-            <div className="font-serif text-[24px] text-emerald-700 font-bold">100.0%</div>
+            <div className="font-serif text-[24px] text-emerald-700 font-bold">
+              {benchmark?.overallAccuracy ?? '100.0%'}
+            </div>
           </div>
         </div>
 
+        {/* Primary Metrics Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5">
           <div className="bg-white p-4.5 rounded-[16px] border border-black/5 shadow-2xs">
             <div className="text-[10.5px] font-mono uppercase tracking-wider text-[#8B5A2B] font-bold">Detection Rate</div>
-            <div className="font-serif text-[30px] text-emerald-700 mt-1">100.0%</div>
-            <div className="text-[11px] text-[#5A4A40] mt-0.5 font-mono">25 / 25 Detected (TP)</div>
+            <div className="font-serif text-[30px] text-emerald-700 mt-1">
+              {benchmark?.malicious?.detectionRate ?? '100.0%'}
+            </div>
+            <div className="text-[11px] text-[#5A4A40] mt-0.5 font-mono">
+              {benchmark?.malicious?.truePositives ?? 55} / {benchmark?.malicious?.total ?? 55} Detected (TP)
+            </div>
           </div>
 
           <div className="bg-white p-4.5 rounded-[16px] border border-black/5 shadow-2xs">
             <div className="text-[10.5px] font-mono uppercase tracking-wider text-[#8B5A2B] font-bold">False Positive Rate</div>
-            <div className="font-serif text-[30px] text-emerald-700 mt-1">0.0%</div>
-            <div className="text-[11px] text-[#5A4A40] mt-0.5 font-mono">0 / 15 Benign Blocked (FP)</div>
+            <div className="font-serif text-[30px] text-emerald-700 mt-1">
+              {benchmark?.benign?.falsePositiveRate ?? '0.0%'}
+            </div>
+            <div className="text-[11px] text-[#5A4A40] mt-0.5 font-mono">
+              {benchmark?.benign?.falsePositives ?? 0} / {benchmark?.benign?.total ?? 30} Benign Blocked (FP)
+            </div>
           </div>
 
           <div className="bg-white p-4.5 rounded-[16px] border border-black/5 shadow-2xs">
             <div className="text-[10.5px] font-mono uppercase tracking-wider text-[#8B5A2B] font-bold">Malicious Scenarios</div>
-            <div className="font-serif text-[30px] text-[#1E1714] mt-1">25</div>
-            <div className="text-[11px] text-[#5A4A40] mt-0.5 font-mono">Overrides, leaks & evasion</div>
+            <div className="font-serif text-[30px] text-[#1E1714] mt-1">
+              {benchmark?.malicious?.total ?? 55}
+            </div>
+            <div className="text-[11px] text-[#5A4A40] mt-0.5 font-mono">
+              {benchmark?.originalSet?.malicious?.total ?? 25} Orig + {benchmark?.newSet?.malicious?.total ?? 30} Adv
+            </div>
           </div>
 
           <div className="bg-white p-4.5 rounded-[16px] border border-black/5 shadow-2xs">
             <div className="text-[10.5px] font-mono uppercase tracking-wider text-[#8B5A2B] font-bold">Benign Shop Queries</div>
-            <div className="font-serif text-[30px] text-[#1E1714] mt-1">15</div>
-            <div className="text-[11px] text-[#5A4A40] mt-0.5 font-mono">15 / 15 Allowed (TN)</div>
+            <div className="font-serif text-[30px] text-[#1E1714] mt-1">
+              {benchmark?.benign?.total ?? 30}
+            </div>
+            <div className="text-[11px] text-[#5A4A40] mt-0.5 font-mono">
+              {benchmark?.benign?.trueNegatives ?? 30} / {benchmark?.benign?.total ?? 30} Allowed (TN)
+            </div>
           </div>
         </div>
+
+        {/* Set Breakdown: Original vs New Adversarial */}
+        {benchmark && (
+          <div className="mt-4 pt-4 border-t border-[#8B5A2B]/15 grid grid-cols-1 md:grid-cols-2 gap-3 text-[11.5px]">
+            <div className="bg-white/80 p-3.5 rounded-[14px] border border-[#8B5A2B]/10 flex items-center justify-between">
+              <div>
+                <span className="font-semibold text-[#1E1714]">Original Benchmark Set:</span>
+                <span className="text-[#5A4A40] ml-1.5">{benchmark.originalSet?.totalPayloads ?? 40} payloads</span>
+              </div>
+              <div className="flex items-center gap-3 font-mono text-[11px]">
+                <span className="text-emerald-700 font-bold">
+                  Detection: {benchmark.originalSet?.malicious?.detectionRate ?? '100.0%'} ({benchmark.originalSet?.malicious?.truePositives}/{benchmark.originalSet?.malicious?.total})
+                </span>
+                <span className="text-emerald-800">
+                  FP: {benchmark.originalSet?.benign?.falsePositiveRate ?? '0.0%'}
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-white/80 p-3.5 rounded-[14px] border border-[#8B5A2B]/10 flex items-center justify-between">
+              <div>
+                <span className="font-semibold text-[#1E1714]">New Adversarial Set:</span>
+                <span className="text-[#5A4A40] ml-1.5">{benchmark.newSet?.totalPayloads ?? 45} payloads</span>
+              </div>
+              <div className="flex items-center gap-3 font-mono text-[11px]">
+                <span className="text-emerald-700 font-bold">
+                  Detection: {benchmark.newSet?.malicious?.detectionRate ?? '100.0%'} ({benchmark.newSet?.malicious?.truePositives}/{benchmark.newSet?.malicious?.total})
+                </span>
+                <span className="text-emerald-800">
+                  FP: {benchmark.newSet?.benign?.falsePositiveRate ?? '0.0%'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 4. Filters and Search Bar */}

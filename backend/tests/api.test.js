@@ -451,4 +451,20 @@ describe('AgntID API Integration Suite', () => {
     });
     assert.equal(ownerAttackRes.status, 200, 'Demo owner account must keep access to /attack/run');
   });
+
+  // 11. Benchmark endpoint returns detection & false positive rates
+  test('GET /api/findings/benchmark returns detection rate and false positive rate', async () => {
+    const res = await fetch(`${baseUrl}/api/findings/benchmark`, {
+      headers: {
+        'Authorization': `Bearer ${ownerToken}`
+      }
+    });
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.equal(data.totalPayloads, 85);
+    assert.equal(data.malicious.detectionRate, '100.0%');
+    assert.equal(data.benign.falsePositiveRate, '0.0%');
+    assert.equal(data.originalSet.malicious.detectionRate, '100.0%');
+    assert.equal(data.newSet.malicious.detectionRate, '100.0%');
+  });
 });

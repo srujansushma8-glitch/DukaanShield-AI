@@ -24,70 +24,156 @@
       "ErrorResponse": {
         "type": "object",
         "properties": {
-          "error": { "type": "string" },
-          "code": { "type": "string" },
-          "details": { "type": "array", "items": { "type": "object" } }
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
         },
-        "required": ["error"]
+        "required": [
+          "error"
+        ]
       },
       "HealthResponse": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "example": "healthy" },
-          "engine": { "type": "string", "example": "AgntID Core v2.4" },
-          "timestamp": { "type": "string", "format": "date-time" }
+          "status": {
+            "type": "string",
+            "example": "healthy"
+          },
+          "engine": {
+            "type": "string",
+            "example": "AgntID Core v2.4"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
         },
-        "required": ["status", "engine", "timestamp"]
+        "required": [
+          "status",
+          "engine",
+          "timestamp"
+        ]
       },
       "ReadyResponse": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "example": "ready" },
-          "database": { "type": "string", "example": "connected" },
-          "timestamp": { "type": "string", "format": "date-time" }
+          "status": {
+            "type": "string",
+            "example": "ready"
+          },
+          "database": {
+            "type": "string",
+            "example": "connected"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
         },
-        "required": ["status", "database", "timestamp"]
+        "required": [
+          "status",
+          "database",
+          "timestamp"
+        ]
       },
       "LoginRequest": {
         "type": "object",
-        "required": ["email", "password"],
+        "required": [
+          "email",
+          "password"
+        ],
         "properties": {
-          "email": { "type": "string", "format": "email", "example": "owner@dukaanshield.ai" },
-          "password": { "type": "string", "example": "Shop@123" }
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "owner@dukaanshield.ai"
+          },
+          "password": {
+            "type": "string",
+            "example": "Shop@123"
+          }
         }
       },
       "RegisterRequest": {
         "type": "object",
-        "required": ["ownerName", "shopName", "email", "password"],
+        "required": [
+          "ownerName",
+          "shopName",
+          "email",
+          "password"
+        ],
         "properties": {
-          "ownerName": { "type": "string", "example": "Ramesh Sharma" },
-          "shopName": { "type": "string", "example": "Sharma Kirana Store" },
-          "email": { "type": "string", "format": "email", "example": "ramesh@sharmakiran.in" },
-          "phone": { "type": "string", "example": "+91 98765 43210" },
-          "password": { "type": "string", "example": "Shop@123" }
+          "ownerName": {
+            "type": "string",
+            "example": "Ramesh Sharma"
+          },
+          "shopName": {
+            "type": "string",
+            "example": "Sharma Kirana Store"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "ramesh@sharmakiran.in"
+          },
+          "phone": {
+            "type": "string",
+            "example": "+91 98765 43210"
+          },
+          "password": {
+            "type": "string",
+            "example": "Shop@123"
+          }
         }
       },
       "User": {
         "type": "object",
         "properties": {
-          "id": { "type": "string" },
-          "email": { "type": "string" },
-          "name": { "type": "string" },
-          "shopName": { "type": "string" },
-          "role": { "type": "string" },
-          "phone": { "type": "string" }
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "shopName": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          }
         }
       },
       "AuthResponse": {
         "type": "object",
         "properties": {
-          "token": { "type": "string" },
-          "user": { "$ref": "#/components/schemas/User" }
+          "token": {
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/User"
+          }
         }
       },
       "AgentRunRequest": {
         "type": "object",
-        "required": ["instruction"],
+        "required": [
+          "instruction"
+        ],
         "properties": {
           "instruction": {
             "type": "string",
@@ -99,83 +185,201 @@
       "TaskEvaluation": {
         "type": "object",
         "properties": {
-          "taskId": { "type": "string" },
-          "name": { "type": "string" },
-          "category": { "type": "string" },
-          "tool": { "type": "string" },
-          "operation": { "type": "string" },
-          "declaredAction": { "type": "string" },
-          "intent": { "type": "string" },
-          "decision": { "type": "string", "enum": ["ALLOWED", "CHALLENGED", "BLOCKED"] },
-          "reason": { "type": "string" },
-          "riskLevel": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
-          "approvalRequired": { "type": "boolean" },
-          "policyRule": { "type": "string" },
-          "executionStatus": { "type": "string" },
-          "executionResult": { "type": "object" },
-          "timestamp": { "type": "string" }
+          "taskId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "declaredAction": {
+            "type": "string"
+          },
+          "intent": {
+            "type": "string"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "ALLOWED",
+              "CHALLENGED",
+              "BLOCKED"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "riskLevel": {
+            "type": "string",
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH",
+              "CRITICAL"
+            ]
+          },
+          "approvalRequired": {
+            "type": "boolean"
+          },
+          "policyRule": {
+            "type": "string"
+          },
+          "executionStatus": {
+            "type": "string"
+          },
+          "executionResult": {
+            "type": "object"
+          },
+          "timestamp": {
+            "type": "string"
+          }
         }
       },
       "AgentRunResponse": {
         "type": "object",
         "properties": {
-          "runId": { "type": "string" },
-          "instruction": { "type": "string" },
-          "timestamp": { "type": "string" },
-          "tasksCount": { "type": "integer" },
-          "allowedCount": { "type": "integer" },
-          "challengedCount": { "type": "integer" },
-          "blockedCount": { "type": "integer" },
-          "tasks": { "type": "array", "items": { "$ref": "#/components/schemas/TaskEvaluation" } }
+          "runId": {
+            "type": "string"
+          },
+          "instruction": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "tasksCount": {
+            "type": "integer"
+          },
+          "allowedCount": {
+            "type": "integer"
+          },
+          "challengedCount": {
+            "type": "integer"
+          },
+          "blockedCount": {
+            "type": "integer"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskEvaluation"
+            }
+          }
         }
       },
       "ApproveChallengeRequest": {
         "type": "object",
-        "required": ["challengeId", "approved"],
+        "required": [
+          "challengeId",
+          "approved"
+        ],
         "properties": {
-          "challengeId": { "type": "string", "example": "CHAL-RUN-123456-T3" },
-          "approved": { "type": "boolean", "example": true }
+          "challengeId": {
+            "type": "string",
+            "example": "CHAL-RUN-123456-T3"
+          },
+          "approved": {
+            "type": "boolean",
+            "example": true
+          }
         }
       },
       "ApproveChallengeResponse": {
         "type": "object",
         "properties": {
-          "success": { "type": "boolean" },
-          "decision": { "type": "string" },
-          "message": { "type": "string" },
-          "executionOutput": { "type": "object" }
+          "success": {
+            "type": "boolean"
+          },
+          "decision": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "executionOutput": {
+            "type": "object"
+          }
         }
       },
       "AttackRunRequest": {
         "type": "object",
-        "required": ["attackId"],
+        "required": [
+          "attackId"
+        ],
         "properties": {
-          "attackId": { "type": "string", "example": "attack-1" }
+          "attackId": {
+            "type": "string",
+            "example": "attack-1"
+          }
         }
       },
       "AuditLog": {
         "type": "object",
         "properties": {
-          "id": { "type": "string" },
-          "timestamp": { "type": "string" },
-          "sessionId": { "type": "string" },
-          "action": { "type": "string" },
-          "tool": { "type": "string" },
-          "intent": { "type": "string" },
-          "decision": { "type": "string" },
-          "riskLevel": { "type": "string" },
-          "reason": { "type": "string" },
-          "policyRule": { "type": "string" }
+          "id": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "intent": {
+            "type": "string"
+          },
+          "decision": {
+            "type": "string"
+          },
+          "riskLevel": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "policyRule": {
+            "type": "string"
+          }
         }
       },
       "AuditLogsResponse": {
         "type": "object",
         "properties": {
-          "data": { "type": "array", "items": { "$ref": "#/components/schemas/AuditLog" } },
-          "page": { "type": "integer" },
-          "total": { "type": "integer" },
-          "logs": { "type": "array", "items": { "$ref": "#/components/schemas/AuditLog" } },
-          "totalCount": { "type": "integer" }
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditLog"
+            }
+          },
+          "page": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "logs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditLog"
+            }
+          },
+          "totalCount": {
+            "type": "integer"
+          }
         }
       }
     }
@@ -184,13 +388,17 @@
     "/api/health": {
       "get": {
         "summary": "Health check probe",
-        "tags": ["System"],
+        "tags": [
+          "System"
+        ],
         "responses": {
           "200": {
             "description": "Server is healthy",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/HealthResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
               }
             }
           }
@@ -200,13 +408,17 @@
     "/api/ready": {
       "get": {
         "summary": "Readiness check probe",
-        "tags": ["System"],
+        "tags": [
+          "System"
+        ],
         "responses": {
           "200": {
             "description": "Database is connected and ready",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ReadyResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyResponse"
+                }
               }
             }
           },
@@ -219,12 +431,16 @@
     "/api/auth/login": {
       "post": {
         "summary": "Authenticate user and issue JWT",
-        "tags": ["Authentication"],
+        "tags": [
+          "Authentication"
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/LoginRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
             }
           }
         },
@@ -233,7 +449,9 @@
             "description": "Authenticated successfully",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/AuthResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
               }
             }
           },
@@ -241,7 +459,9 @@
             "description": "Validation error",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           },
@@ -249,7 +469,9 @@
             "description": "Invalid credentials",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
               }
             }
           }
@@ -259,12 +481,16 @@
     "/api/auth/register": {
       "post": {
         "summary": "Register a new shop owner account",
-        "tags": ["Authentication"],
+        "tags": [
+          "Authentication"
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/RegisterRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
             }
           }
         },
@@ -273,7 +499,9 @@
             "description": "Account created successfully",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/AuthResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
               }
             }
           },
@@ -289,8 +517,14 @@
     "/api/auth/me": {
       "get": {
         "summary": "Get authenticated user profile",
-        "tags": ["Authentication"],
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Current user profile"
@@ -304,8 +538,14 @@
     "/api/auth/logout": {
       "post": {
         "summary": "Log out user session",
-        "tags": ["Authentication"],
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Logged out successfully"
@@ -316,8 +556,14 @@
     "/api/shop/overview": {
       "get": {
         "summary": "Get shop dashboard overview and KPIs",
-        "tags": ["Shop"],
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "Shop"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Shop metrics, inventory alerts, and sales summary"
@@ -331,8 +577,14 @@
     "/api/shop/sales": {
       "get": {
         "summary": "Get sales history and recent POS orders",
-        "tags": ["Shop"],
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "Shop"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Sales history records"
@@ -343,8 +595,14 @@
     "/api/shop/inventory": {
       "get": {
         "summary": "Get inventory stock catalog",
-        "tags": ["Shop"],
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "Shop"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Inventory product list"
@@ -355,8 +613,14 @@
     "/api/shop/customers": {
       "get": {
         "summary": "Get customer khata ledger dues",
-        "tags": ["Shop"],
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "Shop"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Customer balances"
@@ -367,8 +631,14 @@
     "/api/shop/suppliers": {
       "get": {
         "summary": "Get verified supplier directory",
-        "tags": ["Shop"],
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "Shop"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Supplier catalog list"
@@ -379,8 +649,14 @@
     "/api/shop/settings": {
       "get": {
         "summary": "Get shop security policies and thresholds",
-        "tags": ["Shop"],
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "Shop"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Shop and security settings"
@@ -389,8 +665,14 @@
       },
       "put": {
         "summary": "Update security limits and shop profile",
-        "tags": ["Shop"],
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "Shop"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -398,8 +680,12 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "shop": { "type": "object" },
-                  "settings": { "type": "object" }
+                  "shop": {
+                    "type": "object"
+                  },
+                  "settings": {
+                    "type": "object"
+                  }
                 }
               }
             }
@@ -415,13 +701,21 @@
     "/api/agent/run": {
       "post": {
         "summary": "Run AI shop agent with AgntID intent and policy evaluation",
-        "tags": ["Agent"],
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "Agent"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/AgentRunRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/AgentRunRequest"
+              }
             }
           }
         },
@@ -430,7 +724,9 @@
             "description": "Task plan execution evaluation",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/AgentRunResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRunResponse"
+                }
               }
             }
           },
@@ -446,13 +742,21 @@
     "/api/agent/approve-challenge": {
       "post": {
         "summary": "Resolve challenged human-in-the-loop task",
-        "tags": ["Agent"],
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "Agent"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/ApproveChallengeRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/ApproveChallengeRequest"
+              }
             }
           }
         },
@@ -461,7 +765,9 @@
             "description": "Challenge approved or rejected",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ApproveChallengeResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/ApproveChallengeResponse"
+                }
               }
             }
           },
@@ -483,8 +789,14 @@
     "/api/agent/history": {
       "get": {
         "summary": "Get execution history of agent prompts",
-        "tags": ["Agent"],
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "Agent"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "List of previous execution summaries"
@@ -495,8 +807,14 @@
     "/api/agent/pending-challenges": {
       "get": {
         "summary": "Get pending challenges awaiting human authorization",
-        "tags": ["Agent"],
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "Agent"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "List of unresolved challenges"
@@ -507,8 +825,14 @@
     "/api/attack/scenarios": {
       "get": {
         "summary": "List available adversary test attack scenarios",
-        "tags": ["Attack Lab"],
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "Attack Lab"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "List of attack scenarios"
@@ -519,13 +843,21 @@
     "/api/attack/run": {
       "post": {
         "summary": "Execute single adversary attack scenario against AgntID",
-        "tags": ["Attack Lab"],
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "Attack Lab"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/AttackRunRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/AttackRunRequest"
+              }
             }
           }
         },
@@ -542,8 +874,14 @@
     "/api/attack/run-all": {
       "post": {
         "summary": "Execute all 5 adversary attack scenarios",
-        "tags": ["Attack Lab"],
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "Attack Lab"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Batch attack test results and security metrics"
@@ -554,8 +892,14 @@
     "/api/attack/reset": {
       "post": {
         "summary": "Reset attack metrics and session state",
-        "tags": ["Attack Lab"],
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "Attack Lab"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "State restored to baseline"
@@ -566,11 +910,29 @@
     "/api/findings": {
       "get": {
         "summary": "Query security findings with optional filters",
-        "tags": ["Findings"],
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "Findings"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "severity", "in": "query", "schema": { "type": "string" } },
-          { "name": "decision", "in": "query", "schema": { "type": "string" } }
+          {
+            "name": "severity",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "decision",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -582,14 +944,22 @@
     "/api/findings/export-csv": {
       "get": {
         "summary": "Export security findings as CSV spreadsheet",
-        "tags": ["Findings"],
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "Findings"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "CSV file download",
             "content": {
               "text/csv": {
-                "schema": { "type": "string" }
+                "schema": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -599,8 +969,14 @@
     "/api/findings/report": {
       "get": {
         "summary": "Generate complete executive security intelligence report",
-        "tags": ["Findings"],
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "Findings"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Executive security report"
@@ -611,24 +987,91 @@
     "/api/audit-logs": {
       "get": {
         "summary": "Query tamper-resistant audit logs with pagination",
-        "tags": ["Audit Logs"],
-        "security": [{ "BearerAuth": [] }],
+        "tags": [
+          "Audit Logs"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "search", "in": "query", "schema": { "type": "string" } },
-          { "name": "tool", "in": "query", "schema": { "type": "string" } },
-          { "name": "decision", "in": "query", "schema": { "type": "string" } },
-          { "name": "risk", "in": "query", "schema": { "type": "string" } },
-          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
-          { "name": "limit", "in": "query", "schema": { "type": "integer", "maximum": 100 } }
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tool",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "decision",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "risk",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "maximum": 100
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "Paginated audit logs",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/AuditLogsResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/AuditLogsResponse"
+                }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/findings/benchmark": {
+      "get": {
+        "summary": "Retrieve prompt injection benchmark metrics and evaluated payload results",
+        "tags": [
+          "Findings"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Benchmark evaluation summary including detection and false positive rates"
+          },
+          "404": {
+            "description": "Benchmark results not found"
           }
         }
       }
