@@ -189,22 +189,45 @@ function evaluatePayloads(items) {
   let trueNegatives = 0;
   let falsePositives = 0;
   const missesByCategory = {};
+  const categoryStats = {};
 
   for (const item of items) {
     const isBlocked = item.decision === "BLOCKED";
+    const cat = item.category || "uncategorized";
+
+    if (!categoryStats[cat]) {
+      categoryStats[cat] = {
+        total: 0,
+        malicious: 0,
+        benign: 0,
+        truePositives: 0,
+        falseNegatives: 0,
+        trueNegatives: 0,
+        falsePositives: 0
+      };
+    }
+    const cs = categoryStats[cat];
+    cs.total++;
+
     if (item.type === "malicious") {
+      cs.malicious++;
       if (isBlocked) {
         truePositives++;
+        cs.truePositives++;
       } else {
         falseNegatives++;
-        missesByCategory[item.category] = (missesByCategory[item.category] || 0) + 1;
+        cs.falseNegatives++;
+        missesByCategory[cat] = (missesByCategory[cat] || 0) + 1;
       }
     } else {
+      cs.benign++;
       if (isBlocked) {
         falsePositives++;
-        missesByCategory[item.category] = (missesByCategory[item.category] || 0) + 1;
+        cs.falsePositives++;
+        missesByCategory[cat] = (missesByCategory[cat] || 0) + 1;
       } else {
         trueNegatives++;
+        cs.trueNegatives++;
       }
     }
   }
@@ -215,8 +238,33 @@ function evaluatePayloads(items) {
   const falsePositiveRate = benignTotal > 0 ? (falsePositives / benignTotal) * 100 : 0;
   const accuracy = items.length > 0 ? ((truePositives + trueNegatives) / items.length) * 100 : 0;
 
+  const perCategoryDetection = {};
+  for (const [cat, cs] of Object.entries(categoryStats)) {
+    const catDetRate = cs.malicious > 0 ? (cs.truePositives / cs.malicious) * 100 : 100;
+    const catFpRate = cs.benign > 0 ? (cs.falsePositives / cs.benign) * 100 : 0;
+    const catAcc = cs.total > 0 ? ((cs.truePositives + cs.trueNegatives) / cs.total) * 100 : 100;
+
+    perCategoryDetection[cat] = {
+      total: cs.total,
+      malicious: cs.malicious,
+      benign: cs.benign,
+      truePositives: cs.truePositives,
+      falseNegatives: cs.falseNegatives,
+      trueNegatives: cs.trueNegatives,
+      falsePositives: cs.falsePositives,
+      detectionRate: `${catDetRate.toFixed(1)}%`,
+      falsePositiveRate: `${catFpRate.toFixed(1)}%`,
+      accuracy: `${catAcc.toFixed(1)}%`
+    };
+  }
+
   return {
     totalPayloads: items.length,
+    truePositives,
+    falseNegatives,
+    trueNegatives,
+    falsePositives,
+    accuracy: `${accuracy.toFixed(1)}%`,
     malicious: {
       total: maliciousTotal,
       truePositives,
@@ -229,8 +277,8 @@ function evaluatePayloads(items) {
       falsePositives,
       falsePositiveRate: `${falsePositiveRate.toFixed(1)}%`
     },
-    accuracy: `${accuracy.toFixed(1)}%`,
-    missesByCategory
+    missesByCategory,
+    perCategoryDetection
   };
 }
 
@@ -281,12 +329,19 @@ export function runBenchmark() {
   const summary = {
     timestamp: new Date().toISOString(),
     totalPayloads: allResults.length,
+    truePositives: overallStats.truePositives,
+    falseNegatives: overallStats.falseNegatives,
+    trueNegatives: overallStats.trueNegatives,
+    falsePositives: overallStats.falsePositives,
+    accuracy: overallStats.accuracy,
+    overallAccuracy: overallStats.accuracy,
     originalSet: originalStats,
     newSet: newStats,
     heldoutSet: heldoutStats,
     malicious: overallStats.malicious,
     benign: overallStats.benign,
-    overallAccuracy: overallStats.accuracy,
+    missesByCategory: overallStats.missesByCategory,
+    perCategoryDetection: overallStats.perCategoryDetection,
     results: allResults
   };
 
@@ -323,6 +378,10 @@ export function runBenchmark() {
   console.log(`  Set Accuracy:             ${heldoutStats.accuracy}`);
   console.log("  Misses by Category:      ", Object.keys(heldoutStats.missesByCategory).length === 0 ? "None (0 misses)" : JSON.stringify(heldoutStats.missesByCategory));
   console.log("\n[Combined Overall (130 Payloads)]");
+  console.log(`  True Positives (TP):      ${overallStats.truePositives}`);
+  console.log(`  False Negatives (FN):     ${overallStats.falseNegatives}`);
+  console.log(`  True Negatives (TN):      ${overallStats.trueNegatives}`);
+  console.log(`  False Positives (FP):     ${overallStats.falsePositives}`);
   console.log(`  Overall Accuracy:         ${overallStats.accuracy}`);
   console.log(`  Benchmark Results JSON:   ${outPath}`);
   console.log("============================================================");

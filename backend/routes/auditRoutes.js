@@ -5,7 +5,8 @@ const router = express.Router();
 
 router.get('/', (req, res) => {
   const { search, tool, decision, risk } = req.query;
-  let logs = store.auditLogs;
+  const userId = req.user?.id || req.user?.userId || store.currentUserId;
+  let logs = store.getAuditLogs(userId);
 
   if (search && search.trim()) {
     const q = search.toLowerCase();

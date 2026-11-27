@@ -39,7 +39,8 @@ db.exec(`
     risk_level TEXT NOT NULL,
     reason TEXT NOT NULL,
     policy_rule TEXT NOT NULL,
-    blocked_layer TEXT
+    blocked_layer TEXT,
+    user_id TEXT
   );
 
   CREATE TABLE IF NOT EXISTS shop_data (
@@ -62,11 +63,51 @@ db.exec(`
   );
 `);
 
-try {
-  db.exec(`ALTER TABLE audit_logs ADD COLUMN blocked_layer TEXT;`);
-} catch (_) {
-  // column already exists
+// Safe schema migration logic
+function runMigrations() {
+  // Check and add missing columns to audit_logs
+  try {
+    const auditCols = db.prepare(`PRAGMA table_info(audit_logs)`).all().map(c => c.name);
+    if (!auditCols.includes('blocked_layer')) {
+      db.exec(`ALTER TABLE audit_logs ADD COLUMN blocked_layer TEXT;`);
+    }
+    if (!auditCols.includes('user_id')) {
+      db.exec(`ALTER TABLE audit_logs ADD COLUMN user_id TEXT;`);
+    }
+    // Safely backfill legacy audit logs to default owner so tenant isolation is preserved
+    db.prepare(`UPDATE audit_logs SET user_id = 'usr_owner_001' WHERE user_id IS NULL`).run();
+  } catch (_) {
+    // Graceful fallback for column additions
+    try {
+      db.exec(`ALTER TABLE audit_logs ADD COLUMN blocked_layer TEXT;`);
+    } catch (_) {}
+    try {
+      db.exec(`ALTER TABLE audit_logs ADD COLUMN user_id TEXT;`);
+    } catch (_) {}
+    try {
+      db.exec(`UPDATE audit_logs SET user_id = 'usr_owner_001' WHERE user_id IS NULL;`);
+    } catch (_) {}
+  }
+
+  // Add indexes for frequently queried user, challenge and audit fields to eliminate full-table scans
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users(LOWER(email));
+    CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_user_timestamp ON audit_logs(user_id, timestamp DESC);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp DESC);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_tool ON audit_logs(tool);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_decision ON audit_logs(decision);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_session_id ON audit_logs(session_id);
+
+    CREATE INDEX IF NOT EXISTS idx_challenges_user_status ON challenges(user_id, status);
+    CREATE INDEX IF NOT EXISTS idx_challenges_user_id ON challenges(user_id);
+    CREATE INDEX IF NOT EXISTS idx_challenges_status ON challenges(status);
+  `);
 }
+
+runMigrations();
 
 // Seed default demo user if not present
 const existingDemo = db.prepare('SELECT id FROM users WHERE email = ?').get('owner@dukaanshield.ai');
@@ -90,8 +131,8 @@ if (!existingDemo) {
 const logCount = db.prepare('SELECT COUNT(*) as count FROM audit_logs').get().count;
 if (logCount === 0) {
   const insertLogStmt = db.prepare(`
-    INSERT OR REPLACE INTO audit_logs (id, timestamp, session_id, action, tool, intent, decision, risk_level, reason, policy_rule)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO audit_logs (id, timestamp, session_id, action, tool, intent, decision, risk_level, reason, policy_rule, blocked_layer, user_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const initialLogs = [
@@ -105,7 +146,8 @@ if (logCount === 0) {
       decision: "ALLOWED",
       riskLevel: "LOW",
       reason: "Engine initialized with 6 deterministic tool policies.",
-      policyRule: "RULE_SYSTEM_INIT"
+      policyRule: "RULE_SYSTEM_INIT",
+      userId: "usr_owner_001"
     },
     {
       id: "AUD-1002",
@@ -117,7 +159,8 @@ if (logCount === 0) {
       decision: "ALLOWED",
       riskLevel: "LOW",
       reason: "Read-only aggregate revenue query without PII access.",
-      policyRule: "RULE_SALES_AGGREGATE_READ"
+      policyRule: "RULE_SALES_AGGREGATE_READ",
+      userId: "usr_owner_001"
     },
     {
       id: "AUD-1003",
@@ -129,7 +172,8 @@ if (logCount === 0) {
       decision: "BLOCKED",
       riskLevel: "CRITICAL",
       reason: "Unauthorized privilege escalation: modifying supplier payout credentials during invoice processing is blocked.",
-      policyRule: "RULE_SUPPLIER_BANK_LOCK"
+      policyRule: "RULE_SUPPLIER_BANK_LOCK",
+      userId: "usr_owner_001"
     }
   ];
 
@@ -144,18 +188,61 @@ if (logCount === 0) {
       log.decision,
       log.riskLevel,
       log.reason,
-      log.policyRule
+      log.policyRule,
+      null,
+      log.userId || 'usr_owner_001'
     );
   }
 }
 
 // Database helper functions
-export function getAuditLogsFromDb() {
-  const rows = db.prepare('SELECT * FROM audit_logs ORDER BY rowid DESC').all();
+export function getAuditLogsFromDb(userId, filters = {}) {
+  let query = 'SELECT * FROM audit_logs';
+  const params = [];
+  const whereClauses = [];
+
+  if (userId) {
+    whereClauses.push('user_id = ?');
+    params.push(userId);
+  }
+
+  if (filters.tool && filters.tool !== 'ALL') {
+    whereClauses.push('tool = ?');
+    params.push(filters.tool);
+  }
+
+  if (filters.decision && filters.decision !== 'ALL') {
+    whereClauses.push('decision = ?');
+    params.push(filters.decision);
+  }
+
+  if (filters.risk && filters.risk !== 'ALL') {
+    whereClauses.push('risk_level = ?');
+    params.push(filters.risk);
+  }
+
+  if (filters.sessionId) {
+    whereClauses.push('session_id = ?');
+    params.push(filters.sessionId);
+  }
+
+  if (whereClauses.length > 0) {
+    query += ` WHERE ${whereClauses.join(' AND ')}`;
+  }
+
+  query += ' ORDER BY rowid DESC';
+
+  if (filters.limit && Number.isInteger(Number(filters.limit))) {
+    query += ' LIMIT ?';
+    params.push(Number(filters.limit));
+  }
+
+  const rows = db.prepare(query).all(...params);
   return rows.map(r => ({
     id: r.id,
     timestamp: r.timestamp,
     sessionId: r.session_id,
+    userId: r.user_id || 'usr_owner_001',
     action: r.action,
     tool: r.tool,
     intent: r.intent,
@@ -169,8 +256,8 @@ export function getAuditLogsFromDb() {
 
 export function insertAuditLogToDb(log) {
   const stmt = db.prepare(`
-    INSERT OR REPLACE INTO audit_logs (id, timestamp, session_id, action, tool, intent, decision, risk_level, reason, policy_rule, blocked_layer)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO audit_logs (id, timestamp, session_id, action, tool, intent, decision, risk_level, reason, policy_rule, blocked_layer, user_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   stmt.run(
     log.id,
@@ -183,12 +270,14 @@ export function insertAuditLogToDb(log) {
     log.riskLevel,
     log.reason,
     log.policyRule || 'RULE_DEFAULT',
-    log.blockedLayer || log.blocked_layer || null
+    log.blockedLayer || log.blocked_layer || null,
+    log.userId || log.user_id || 'usr_owner_001'
   );
   return log;
 }
 
 export function getUserByEmailFromDb(email) {
+  if (!email) return null;
   const row = db.prepare('SELECT * FROM users WHERE LOWER(email) = LOWER(?)').get(email);
   if (!row) return null;
   return {
@@ -203,6 +292,7 @@ export function getUserByEmailFromDb(email) {
 }
 
 export function getUserByIdFromDb(id) {
+  if (!id) return null;
   const row = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   if (!row) return null;
   return {
@@ -259,8 +349,13 @@ export function getChallengeFromDb(id) {
   }
 }
 
-export function getChallengesByUserFromDb(userId) {
-  const rows = db.prepare('SELECT * FROM challenges WHERE user_id = ?').all(userId);
+export function getChallengesByUserFromDb(userId, status) {
+  let rows;
+  if (status) {
+    rows = db.prepare('SELECT * FROM challenges WHERE user_id = ? AND status = ?').all(userId, status);
+  } else {
+    rows = db.prepare('SELECT * FROM challenges WHERE user_id = ?').all(userId);
+  }
   return rows.map(row => {
     try {
       const parsed = JSON.parse(row.json);

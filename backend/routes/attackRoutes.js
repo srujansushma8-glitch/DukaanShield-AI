@@ -5,6 +5,7 @@ import { runSplitActionTest } from '../attacks/splitAction.js';
 import { runGradualDriftTest } from '../attacks/gradualDrift.js';
 import { runRepeatedRefundsTest } from '../attacks/repeatedRefunds.js';
 import { store } from '../data/store.js';
+import { db } from '../data/db.js';
 import { validate, attackRunSchema, emptyBodySchema } from '../schemas.js';
 import { requireRole } from '../middleware/requireAuth.js';
 
@@ -77,16 +78,17 @@ router.post('/run', requireRole('Shop Owner & Administrator', 'Shop Owner'), val
   }
 
   const result = scenario.runner();
+  const userId = req.user?.id || req.user?.userId || store.currentUserId;
 
   return res.json({
     attackId: scenario.id,
     name: scenario.name,
     result,
-    metrics: store.getMetrics()
+    metrics: store.getMetrics(userId)
   });
 });
 
-router.post('/run-all', validate(emptyBodySchema), (req, res) => {
+router.post('/run-all', requireRole('Shop Owner & Administrator', 'Shop Owner'), validate(emptyBodySchema), (req, res) => {
   const results = ATTACK_SCENARIOS.map(scenario => {
     const res = scenario.runner();
     return {
@@ -102,18 +104,45 @@ router.post('/run-all', validate(emptyBodySchema), (req, res) => {
     };
   });
 
+  const userId = req.user?.id || req.user?.userId || store.currentUserId;
+
   return res.json({
     executedCount: results.length,
     results,
-    metrics: store.getMetrics()
+    metrics: store.getMetrics(userId)
   });
 });
 
-router.post('/reset', validate(emptyBodySchema), (req, res) => {
-  store.reset();
+router.post('/reset', requireRole('Shop Owner & Administrator', 'Shop Owner'), validate(emptyBodySchema), (req, res) => {
+  const userId = req.user?.id || req.user?.userId || store.currentUserId;
+
+  // 1. Reset user's session state in memory and SQLite
+  store.userSessions.delete(userId);
+  try {
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+  } catch (_) {}
+  store.getSessionState(userId);
+
+  // 2. Reset user's findings back to baseline in memory
+  store.userFindings.delete(userId);
+
+  // 3. Reset user's challenges in memory and SQLite
+  store.userChallenges.delete(userId);
+  if (store.loadedChallengeUsers) {
+    store.loadedChallengeUsers.delete(userId);
+  }
+  try {
+    db.prepare('DELETE FROM challenges WHERE user_id = ?').run(userId);
+  } catch (_) {}
+
+  // 4. Reset user's shop data back to baseline
+  try {
+    store.seedUserShop(userId);
+  } catch (_) {}
+
   return res.json({
     message: "Store state, session lineage, and findings restored to baseline.",
-    metrics: store.getMetrics()
+    metrics: store.getMetrics(userId)
   });
 });
 

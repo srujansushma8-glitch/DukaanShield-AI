@@ -2,7 +2,7 @@ import { POLICIES } from './policies.js';
 import { IntentTracker } from './intentTracker.js';
 import { calculateRisk } from './riskAssessment.js';
 import { isPromptInjection } from './injectionPatterns.js';
-import { classifyWithAnthropic } from './anthropicClassifier.js';
+import { classifyWithAnthropic, classifyWithAnthropicAsync } from './anthropicClassifier.js';
 import { store, userContext } from '../data/store.js';
 
 export class AuthorizationEngine {
@@ -20,23 +20,28 @@ export class AuthorizationEngine {
     const intent = proposedAction.intent || sessionState.activeIntent || "General shop operations";
 
     // 1. Untrusted context / Prompt Injection Check
-    // Normalize input (lowercase, unicode NFKC, strip zero-width chars) and match regex pattern list
     const rawInstruction = proposedAction.rawInstruction || proposedAction.userPrompt || "";
     let injectionBlocked = false;
     let blockedLayer = null;
     let blockReason = "Prompt injection attempt detected in untrusted input stream. Autonomous execution aborted.";
+    let classifierUnavailable = false;
+    let classifierError = null;
+    let classifierPromise = null;
 
     if (isPromptInjection(rawInstruction)) {
       injectionBlocked = true;
       blockedLayer = "regex_pattern_shield";
     } else if (rawInstruction) {
-      // After regex check passes, call Anthropic classifier (model from ANTHROPIC_MODEL, 3s timeout)
-      // If key is unset, errors, or times out, classifyWithAnthropic returns { injection: false, skipped/error: true }
       const classifierRes = classifyWithAnthropic(rawInstruction);
-      if (classifierRes && classifierRes.injection) {
+      if (classifierRes && typeof classifierRes.then === 'function') {
+        classifierPromise = classifierRes;
+      } else if (classifierRes && classifierRes.injection) {
         injectionBlocked = true;
         blockedLayer = "anthropic_classifier";
         blockReason = "Prompt injection detected by Anthropic AI security classifier. Autonomous execution aborted.";
+      } else if (classifierRes && (classifierRes.unavailable || classifierRes.error || classifierRes.timedOut)) {
+        classifierUnavailable = true;
+        classifierError = classifierRes.error;
       }
     }
 
@@ -128,8 +133,8 @@ export class AuthorizationEngine {
     let policyResult = null;
     let appliedRuleId = "RULE_DEFAULT_STRICT";
 
-    const toolKey = proposedAction.tool.toUpperCase().replace("TOOL", "_TOOL");
-    const toolPolicy = this.policies[toolKey] || this.policies[proposedAction.tool.toUpperCase()];
+    const toolKey = proposedAction.tool?.toUpperCase().replace("TOOL", "_TOOL");
+    const toolPolicy = this.policies[toolKey] || this.policies[proposedAction.tool?.toUpperCase()];
 
     if (toolPolicy && toolPolicy.rules) {
       for (const rule of toolPolicy.rules) {
@@ -144,7 +149,6 @@ export class AuthorizationEngine {
 
     // If no explicit rule matched, apply strict least privilege
     if (!policyResult) {
-      // Check restricted operations list
       if (toolPolicy?.restrictedOperations?.includes(proposedAction.operation)) {
         policyResult = {
           decision: "BLOCKED",
@@ -163,7 +167,20 @@ export class AuthorizationEngine {
 
     const riskLevel = calculateRisk(proposedAction, policyResult);
 
-    const finalDecision = {
+    // Risk-aware fallback: if external classification was attempted but unavailable, never silently authorize high-risk or uncertain action
+    if (classifierUnavailable && policyResult.decision === "ALLOWED") {
+      if (riskLevel === "HIGH" || riskLevel === "CRITICAL" || appliedRuleId === "RULE_DEFAULT_STRICT") {
+        policyResult = {
+          decision: "CHALLENGED",
+          reason: `External security classification unavailable (${classifierError || 'timeout or error'}). High-risk action requires owner approval.`,
+          riskLevel,
+          approvalRequired: true
+        };
+        appliedRuleId = "RULE_FALLBACK_RISK_GUARD";
+      }
+    }
+
+    const baseDecision = {
       decision: policyResult.decision,
       reason: policyResult.reason,
       declared_intent: intent,
@@ -175,21 +192,103 @@ export class AuthorizationEngine {
     };
 
     // Record decision in session lineage
-    tracker.recordAction(proposedAction, finalDecision);
+    tracker.recordAction(proposedAction, baseDecision);
 
     // Record in global audit log
     store.addAuditLog({
       action: proposedAction.action || proposedAction.operation,
       tool: proposedAction.tool,
       intent,
-      decision: finalDecision.decision,
-      riskLevel: finalDecision.risk_level,
-      reason: finalDecision.reason,
-      policyRule: finalDecision.policy_rule,
+      decision: baseDecision.decision,
+      riskLevel: baseDecision.risk_level,
+      reason: baseDecision.reason,
+      policyRule: baseDecision.policy_rule,
       sessionId: sessionState.sessionId
     });
 
+    const finalDecision = { ...baseDecision };
+
+    // If an asynchronous classification promise is in flight, attach Thenable support
+    if (classifierPromise) {
+      const asyncDecisionPromise = (async () => {
+        try {
+          const asyncRes = await classifierPromise;
+          if (asyncRes && asyncRes.injection) {
+            const blockedDecision = {
+              decision: "BLOCKED",
+              reason: "Prompt injection detected by Anthropic AI security classifier. Autonomous execution aborted.",
+              declared_intent: intent,
+              requested_action: `${proposedAction.tool}.${proposedAction.operation}`,
+              risk_level: "CRITICAL",
+              approval_required: false,
+              policy_rule: "RULE_PROMPT_INJECTION_SHIELD",
+              blocked_layer: "anthropic_classifier",
+              timestamp: new Date().toISOString()
+            };
+            store.addAuditLog({
+              action: proposedAction.action || proposedAction.operation,
+              tool: proposedAction.tool,
+              intent,
+              decision: blockedDecision.decision,
+              riskLevel: blockedDecision.risk_level,
+              reason: blockedDecision.reason,
+              policyRule: blockedDecision.policy_rule,
+              blockedLayer: "anthropic_classifier",
+              sessionId: sessionState.sessionId
+            });
+            return blockedDecision;
+          }
+
+          if (asyncRes && (asyncRes.unavailable || asyncRes.error || asyncRes.timedOut)) {
+            if (baseDecision.decision === "ALLOWED" && (riskLevel === "HIGH" || riskLevel === "CRITICAL" || appliedRuleId === "RULE_DEFAULT_STRICT")) {
+              const challengedDecision = {
+                ...baseDecision,
+                decision: "CHALLENGED",
+                approval_required: true,
+                reason: `External security classification unavailable (${asyncRes.error || 'timeout or error'}). High-risk action requires owner approval.`,
+                policy_rule: "RULE_FALLBACK_RISK_GUARD",
+                timestamp: new Date().toISOString()
+              };
+              store.addAuditLog({
+                action: proposedAction.action || proposedAction.operation,
+                tool: proposedAction.tool,
+                intent,
+                decision: challengedDecision.decision,
+                riskLevel: challengedDecision.risk_level,
+                reason: challengedDecision.reason,
+                policyRule: challengedDecision.policy_rule,
+                sessionId: sessionState.sessionId
+              });
+              return challengedDecision;
+            }
+          }
+
+          return baseDecision;
+        } catch (err) {
+          if (baseDecision.decision === "ALLOWED" && (riskLevel === "HIGH" || riskLevel === "CRITICAL" || appliedRuleId === "RULE_DEFAULT_STRICT")) {
+            return {
+              ...baseDecision,
+              decision: "CHALLENGED",
+              approval_required: true,
+              reason: `External security classification error (${err.message}). High-risk action requires owner approval.`,
+              policy_rule: "RULE_FALLBACK_RISK_GUARD",
+              timestamp: new Date().toISOString()
+            };
+          }
+          return baseDecision;
+        }
+      })();
+
+      finalDecision.then = (onFulfilled, onRejected) => asyncDecisionPromise.then(onFulfilled, onRejected);
+      finalDecision.catch = (onRejected) => asyncDecisionPromise.catch(onRejected);
+      finalDecision.finally = (onFinally) => asyncDecisionPromise.finally(onFinally);
+    }
+
     return finalDecision;
+  }
+
+  async evaluateAsync(proposedAction, sessionContext = {}) {
+    return Promise.resolve(this.evaluate(proposedAction, sessionContext));
   }
 }
 

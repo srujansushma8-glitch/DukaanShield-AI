@@ -295,18 +295,26 @@ class DataStore {
     };
   }
 
-  get auditLogs() {
-    return getAuditLogsFromDb();
+  getAuditLogs(userId) {
+    const uid = userId || this.currentUserId;
+    return getAuditLogsFromDb(uid);
   }
 
-  addAuditLog(entry) {
+  get auditLogs() {
+    return this.getAuditLogs(this.currentUserId);
+  }
+
+  addAuditLog(entry, userId) {
     const session = this.sessionState;
+    const uid = entry.userId || entry.user_id || userId || entry.ownerId || this.currentUserId || 'usr_owner_001';
     const log = {
       id: entry.id || `AUD-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 6)}`,
       timestamp: entry.timestamp || new Date().toISOString(),
       sessionId: entry.sessionId || session.sessionId,
+      userId: uid,
       ...entry
     };
+    log.userId = uid;
     insertAuditLogToDb(log);
     return log;
   }

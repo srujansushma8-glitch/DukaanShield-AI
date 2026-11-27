@@ -315,6 +315,64 @@ describe('AgntID API Integration Suite', () => {
     assert.equal(foreignApproveData.code, 'NOT_FOUND');
   });
 
+  // Multi-tenant audit logs isolation: two users cannot read each other's audit records
+  test('Two users cannot read each other audit records in GET /api/audit-logs', async () => {
+    // 1. User 1 triggers an agent run generating an audit log
+    const u1Tag = `User1_Audit_Token_${Date.now()}`;
+    const run1 = await fetch(`${baseUrl}/api/agent/run`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${ownerToken}`
+      },
+      body: JSON.stringify({ instruction: `Summarize sales data for ${u1Tag}` })
+    });
+    assert.equal(run1.status, 200);
+
+    // 2. User 2 triggers an agent run generating an audit log
+    const u2Tag = `User2_Audit_Token_${Date.now()}`;
+    const run2 = await fetch(`${baseUrl}/api/agent/run`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${otherToken}`
+      },
+      body: JSON.stringify({ instruction: `Summarize sales data for ${u2Tag}` })
+    });
+    assert.equal(run2.status, 200);
+
+    // 3. User 1 fetches audit logs
+    const res1 = await fetch(`${baseUrl}/api/audit-logs`, {
+      headers: { 'Authorization': `Bearer ${ownerToken}` }
+    });
+    assert.equal(res1.status, 200);
+    const data1 = await res1.json();
+    const logs1 = data1.data || data1.logs || [];
+
+    // User 1 sees their own audit event and never sees User 2's event
+    assert.ok(logs1.some(l => (l.intent && l.intent.includes(u1Tag)) || (l.action && l.action.includes(u1Tag))), 'User 1 should see their own audit log');
+    assert.ok(!logs1.some(l => (l.intent && l.intent.includes(u2Tag)) || (l.action && l.action.includes(u2Tag))), 'User 1 must not see User 2 audit log');
+    assert.ok(logs1.every(l => l.userId === 'usr_owner_001'), 'All User 1 logs must belong to User 1');
+
+    // 4. User 2 fetches audit logs
+    const res2 = await fetch(`${baseUrl}/api/audit-logs`, {
+      headers: { 'Authorization': `Bearer ${otherToken}` }
+    });
+    assert.equal(res2.status, 200);
+    const data2 = await res2.json();
+    const logs2 = data2.data || data2.logs || [];
+
+    // Decode User 2 id from otherToken
+    const decodedOther = jwt.decode(otherToken);
+    const user2Id = decodedOther.id;
+
+    // User 2 sees their own audit event and never sees User 1's event or historical seed logs
+    assert.ok(logs2.some(l => (l.intent && l.intent.includes(u2Tag)) || (l.action && l.action.includes(u2Tag))), 'User 2 should see their own audit log');
+    assert.ok(!logs2.some(l => (l.intent && l.intent.includes(u1Tag)) || (l.action && l.action.includes(u1Tag))), 'User 2 must not see User 1 audit log');
+    assert.ok(!logs2.some(l => l.id === 'AUD-1001' || l.id === 'AUD-1002' || l.id === 'AUD-1003'), 'User 2 must not see User 1 historical seed logs');
+    assert.ok(logs2.every(l => l.userId === user2Id), 'All User 2 logs must belong to User 2');
+  });
+
   // 8. Restart keeps a pending challenge in SQLite challenges table and it can still be approved
   test('Restart keeps a pending challenge and it can still be approved', async () => {
     // 1. User 1 triggers a challenged task
@@ -423,7 +481,7 @@ describe('AgntID API Integration Suite', () => {
     const forbiddenApproveData = await forbiddenApproveRes.json();
     assert.equal(forbiddenApproveData.code, 'FORBIDDEN');
 
-    // 4. User with another role gets 403 on /attack/run
+    // 4. User with another role gets 403 on /attack/run, /attack/run-all, and /attack/reset
     const forbiddenAttackRes = await fetch(`${baseUrl}/api/attack/run`, {
       method: 'POST',
       headers: {
@@ -438,7 +496,31 @@ describe('AgntID API Integration Suite', () => {
     const forbiddenAttackData = await forbiddenAttackRes.json();
     assert.equal(forbiddenAttackData.code, 'FORBIDDEN');
 
-    // 5. Demo owner keeps access on /attack/run -> 200 OK
+    const forbiddenRunAllRes = await fetch(`${baseUrl}/api/attack/run-all`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${unauthorizedToken}`
+      },
+      body: JSON.stringify({})
+    });
+    assert.equal(forbiddenRunAllRes.status, 403, 'A token with another role must get 403 on /attack/run-all');
+    const forbiddenRunAllData = await forbiddenRunAllRes.json();
+    assert.equal(forbiddenRunAllData.code, 'FORBIDDEN');
+
+    const forbiddenResetRes = await fetch(`${baseUrl}/api/attack/reset`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${unauthorizedToken}`
+      },
+      body: JSON.stringify({})
+    });
+    assert.equal(forbiddenResetRes.status, 403, 'A token with another role must get 403 on /attack/reset');
+    const forbiddenResetData = await forbiddenResetRes.json();
+    assert.equal(forbiddenResetData.code, 'FORBIDDEN');
+
+    // 5. Demo owner keeps access on /attack/run, /attack/run-all, /attack/reset -> 200 OK
     const ownerAttackRes = await fetch(`${baseUrl}/api/attack/run`, {
       method: 'POST',
       headers: {
@@ -450,6 +532,116 @@ describe('AgntID API Integration Suite', () => {
       })
     });
     assert.equal(ownerAttackRes.status, 200, 'Demo owner account must keep access to /attack/run');
+
+    const ownerRunAllRes = await fetch(`${baseUrl}/api/attack/run-all`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${ownerToken}`
+      },
+      body: JSON.stringify({})
+    });
+    assert.equal(ownerRunAllRes.status, 200, 'Demo owner account must keep access to /attack/run-all');
+
+    // 6. Valid registered Shop Owner also has access to /attack/run, /attack/run-all, /attack/reset -> 200 OK
+    const otherAttackRes = await fetch(`${baseUrl}/api/attack/run`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${otherToken}`
+      },
+      body: JSON.stringify({
+        attackId: 'attack-1'
+      })
+    });
+    assert.equal(otherAttackRes.status, 200, 'Valid Shop Owner must have access to /attack/run');
+  });
+
+  // 10. Multi-tenant isolation: resetting one user in Attack Lab never affects another
+  test('Resetting one account in Attack Lab does not affect another user session, findings, or challenges', async () => {
+    // 1. User 2 runs an attack and creates a challenge
+    const u2AttackRes = await fetch(`${baseUrl}/api/attack/run`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${otherToken}`
+      },
+      body: JSON.stringify({ attackId: 'attack-2' })
+    });
+    assert.equal(u2AttackRes.status, 200);
+
+    const u2AgentRes = await fetch(`${baseUrl}/api/agent/run`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${otherToken}`
+      },
+      body: JSON.stringify({ instruction: 'Prepare customer debt reminders for overdue balances' })
+    });
+    assert.equal(u2AgentRes.status, 200);
+
+    // Record User 2 baseline before User 1 resets
+    const u2FindingsBeforeRes = await fetch(`${baseUrl}/api/findings`, {
+      headers: { 'Authorization': `Bearer ${otherToken}` }
+    });
+    const u2FindingsBefore = await u2FindingsBeforeRes.json();
+    assert.ok(u2FindingsBefore.findings.length >= 2, 'User 2 should have accumulated findings');
+
+    const u2ChallengesBeforeRes = await fetch(`${baseUrl}/api/agent/pending-challenges`, {
+      headers: { 'Authorization': `Bearer ${otherToken}` }
+    });
+    const u2ChallengesBefore = await u2ChallengesBeforeRes.json();
+    assert.ok(u2ChallengesBefore.pendingChallenges.length >= 1, 'User 2 should have pending challenges');
+
+    // 2. User 1 runs all attacks
+    const u1AttackRes = await fetch(`${baseUrl}/api/attack/run-all`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${ownerToken}`
+      },
+      body: JSON.stringify({})
+    });
+    assert.equal(u1AttackRes.status, 200);
+
+    const u1FindingsBeforeRes = await fetch(`${baseUrl}/api/findings`, {
+      headers: { 'Authorization': `Bearer ${ownerToken}` }
+    });
+    const u1FindingsBefore = await u1FindingsBeforeRes.json();
+    assert.ok(u1FindingsBefore.findings.length > 2, 'User 1 should have accumulated multiple findings');
+
+    // 3. User 1 executes Attack Lab reset
+    const resetRes = await fetch(`${baseUrl}/api/attack/reset`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${ownerToken}`
+      },
+      body: JSON.stringify({})
+    });
+    assert.equal(resetRes.status, 200);
+    const resetData = await resetRes.json();
+    assert.equal(resetData.metrics.totalAttacks, 1, 'User 1 metrics restored to baseline');
+
+    // Verify User 1 findings are restored to baseline (1 finding)
+    const u1FindingsAfterRes = await fetch(`${baseUrl}/api/findings`, {
+      headers: { 'Authorization': `Bearer ${ownerToken}` }
+    });
+    const u1FindingsAfter = await u1FindingsAfterRes.json();
+    assert.equal(u1FindingsAfter.findings.length, 1, 'User 1 should only have baseline finding');
+
+    // 4. Verify User 2 findings and challenges are completely preserved
+    const u2FindingsAfterRes = await fetch(`${baseUrl}/api/findings`, {
+      headers: { 'Authorization': `Bearer ${otherToken}` }
+    });
+    const u2FindingsAfter = await u2FindingsAfterRes.json();
+    assert.equal(u2FindingsAfter.findings.length, u2FindingsBefore.findings.length, 'User 2 findings count must remain untouched');
+
+    const u2ChallengesAfterRes = await fetch(`${baseUrl}/api/agent/pending-challenges`, {
+      headers: { 'Authorization': `Bearer ${otherToken}` }
+    });
+    const u2ChallengesAfter = await u2ChallengesAfterRes.json();
+    assert.equal(u2ChallengesAfter.pendingChallenges.length, u2ChallengesBefore.pendingChallenges.length, 'User 2 pending challenges must remain untouched');
   });
 
   // 11. Benchmark endpoint returns detection & false positive rates
