@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Menu, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import BrandLogo from './common/BrandLogo';
 
 export default function Navbar({ onOpenDemo }) {
   const [activeSection, setActiveSection] = useState('home');
@@ -62,15 +63,8 @@ export default function Navbar({ onOpenDemo }) {
       isScrolled ? 'bg-[#F5EDE3]/90 backdrop-blur-md shadow-sm' : 'bg-transparent'
     }`}>
       <div className="max-w-[1400px] mx-auto px-6 lg:px-12 h-20 flex items-center justify-between">
-        {/* Logo Stacked */}
-        <a href="#home" className="group flex flex-col items-start leading-none select-none">
-          <span className="font-serif text-[22px] tracking-[0.22em] text-[#1E1714] font-medium uppercase">
-            DUKAAN
-          </span>
-          <span className="font-sans text-[8.5px] tracking-[0.32em] text-[#5A4A40] uppercase font-semibold mt-1">
-            SHIELD AI
-          </span>
-        </a>
+        {/* Official Brand Logo */}
+        <BrandLogo variant="light" size="md" href="#home" />
 
         {/* Desktop Nav Links */}
         <nav className="hidden md:flex items-center space-x-8 lg:space-x-10 text-[13px] tracking-wide text-[#5A4A40]">

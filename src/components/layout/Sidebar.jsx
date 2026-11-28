@@ -13,10 +13,9 @@ import {
   ScrollText,
   Settings,
   HelpCircle,
-  LogOut,
-  Store,
-  Shield
+  LogOut
 } from 'lucide-react';
+import BrandLogo from '../common/BrandLogo';
 import { useAuth } from '../../context/AuthContext';
 
 export default function Sidebar({ onCloseMobile }) {
@@ -51,27 +50,10 @@ export default function Sidebar({ onCloseMobile }) {
       {/* Decorative Cream & Warm Ivory Ambient Glow at bottom */}
       <div className="absolute -bottom-16 -left-16 w-80 h-80 rounded-full bg-gradient-to-tr from-[#FAF6F0]/10 via-[#EDE3D3]/5 to-transparent blur-3xl pointer-events-none" />
 
-      {/* Top Branding */}
+      {/* Top Branding with new official DukaanShield AI Shield Logo */}
       <div className="relative z-10">
         <div className="h-20 px-6 flex items-center border-b border-[#FAF6F0]/12 bg-[#1B110C]/60">
-          <NavLink to="/app/dashboard" className="flex items-center space-x-3 group">
-            {/* Shield Emblem with Cream Ivory Gradient */}
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#FAF6F0] via-[#EDE3D3] to-[#C8B8A6] p-[1.5px] shadow-[0_2px_12px_rgba(250,246,240,0.18)]">
-              <div className="w-full h-full bg-[#221610] rounded-[10px] flex items-center justify-center relative overflow-hidden">
-                <Shield className="w-5 h-5 text-[#FAF6F0] fill-[#FAF6F0]/20" />
-                <Store className="w-2.5 h-2.5 text-[#EDE3D3] absolute bottom-2" />
-              </div>
-            </div>
-
-            <div className="flex flex-col leading-none">
-              <span className="font-serif text-[18px] tracking-[0.14em] text-white font-semibold uppercase group-hover:text-[#FAF6F0] transition-colors">
-                DUKAAN
-              </span>
-              <span className="font-sans text-[9px] tracking-[0.28em] text-[#FAF6F0] uppercase font-bold mt-1">
-                SHIELD AI
-              </span>
-            </div>
-          </NavLink>
+          <BrandLogo variant="dark" size="md" linkTo="/app/dashboard" />
         </div>
 
         {/* Navigation Items */}

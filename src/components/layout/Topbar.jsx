@@ -11,6 +11,7 @@ import {
   Store
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import BrandLogo from '../common/BrandLogo';
 
 export default function Topbar({ onToggleMobile }) {
   const { user } = useAuth();
@@ -35,6 +36,11 @@ export default function Topbar({ onToggleMobile }) {
         >
           <Menu className="w-5 h-5" />
         </button>
+
+        {/* Mobile Brand Emblem & Wordmark */}
+        <div className="lg:hidden flex items-center">
+          <BrandLogo variant="light" size="sm" linkTo="/app/dashboard" />
+        </div>
 
         {/* Global Search Pill Bar */}
         <div className="relative hidden sm:block w-64 md:w-80 lg:w-96">

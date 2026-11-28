@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, ShieldCheck, ArrowRight, Lock, Mail, Sparkles } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import BrandLogo from '../../components/common/BrandLogo';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -44,14 +45,7 @@ export default function LoginPage() {
 
         {/* Top Header */}
         <div className="relative z-10">
-          <Link to="/" className="inline-flex flex-col items-start leading-none group">
-            <span className="font-serif text-[24px] tracking-[0.22em] text-white font-medium uppercase group-hover:text-[#F3D7BD] transition-colors">
-              DUKAAN
-            </span>
-            <span className="font-sans text-[9px] tracking-[0.34em] text-[#C4A482] uppercase font-semibold mt-1">
-              SHIELD AI
-            </span>
-          </Link>
+          <BrandLogo variant="dark" size="lg" linkTo="/" />
 
           <div className="mt-14 max-w-md">
             <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/15 text-[10.5px] uppercase tracking-[0.2em] text-[#E6C29E] font-medium mb-4">

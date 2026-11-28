@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ArrowRight, Check } from 'lucide-react';
+import BrandLogo from './common/BrandLogo';
 
 export default function Footer() {
   const [email, setEmail] = useState('');
@@ -23,15 +24,8 @@ export default function Footer() {
         {/* Main Footer Row */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 pb-10">
           
-          {/* 1. Logo */}
-          <div className="flex flex-col items-start leading-none">
-            <span className="font-serif text-[20px] tracking-[0.22em] text-white font-medium uppercase">
-              DUKAAN
-            </span>
-            <span className="font-sans text-[8px] tracking-[0.32em] text-[#C4A482] uppercase font-semibold mt-1">
-              SHIELD AI
-            </span>
-          </div>
+          {/* 1. Official Brand Logo */}
+          <BrandLogo variant="dark" size="md" href="#home" />
 
           {/* 2. Newsletter Signup */}
           <div className="flex flex-col sm:flex-row sm:items-center gap-4 lg:gap-6">
