@@ -13,8 +13,9 @@ if (!fs.existsSync(dir)) {
 
 export const db = new Database(dbPath);
 
-// Enable WAL mode for performance
+// Enable WAL mode for performance and busy timeout for concurrent transactions
 db.pragma('journal_mode = WAL');
+db.pragma('busy_timeout = 5000');
 
 // Initialize schema
 db.exec(`

@@ -134,7 +134,7 @@ describe('AgntID Planner & Fallback Suite', () => {
     const logs = store.auditLogs;
     const badPlanLog = logs.find(
       l => (l.action === 'planner.fallback' || l.reason?.includes('source: fallback')) &&
-           l.intent.includes('daily store reports')
+           (l.intent?.includes('daily store reports') || false)
     );
     assert.ok(badPlanLog, 'Fallback must be logged in audit trail');
     assert.match(badPlanLog.reason, /source: fallback/i);
@@ -191,7 +191,7 @@ describe('AgntID Planner & Fallback Suite', () => {
     const logs = store.auditLogs;
     const llmLog = logs.find(
       l => (l.action === 'planner.llm' || l.reason?.includes('source: llm')) &&
-           l.intent.includes('Check today sales')
+           (l.intent?.includes('Check today sales') || false)
     );
     assert.ok(llmLog, 'LLM plan source must be recorded in audit log');
     assert.match(llmLog.reason, /source: llm/i);

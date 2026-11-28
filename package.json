@@ -8,8 +8,8 @@
   },
   "scripts": {
     "dev": "vite",
-    "test": "node --test backend/tests/*.test.js && vitest run",
-    "test:backend": "node --test backend/tests/*.test.js",
+    "test": "node --test --test-concurrency=1 backend/tests/*.test.js && vitest run",
+    "test:backend": "node --test --test-concurrency=1 backend/tests/*.test.js",
     "test:frontend": "vitest run",
     "benchmark": "node backend/benchmark/run.js",
     "server": "node backend/server.js",

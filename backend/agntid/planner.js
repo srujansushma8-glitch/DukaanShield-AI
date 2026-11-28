@@ -173,9 +173,10 @@ export async function planTasks(instruction, runId) {
     return fallbackTasks;
   }
 
+  let timeout;
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+    timeout = setTimeout(() => controller.abort(), 5000);
 
     const systemPrompt = `You are an AI task planner for DukaanShield AI, an autonomous Indian kirana shop manager.
 Decompose the shop owner's instruction into an array of planned tasks.
@@ -257,5 +258,7 @@ Respond ONLY with a valid JSON array of objects with keys: name, category, tool,
     const fallbackTasks = getDefaultTasks(instruction, runId);
     logPlanSource(instruction, 'fallback', err.message);
     return fallbackTasks;
+  } finally {
+    if (timeout) clearTimeout(timeout);
   }
 }
