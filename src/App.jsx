@@ -1,6 +1,7 @@
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import ErrorBoundary from './components/common/ErrorBoundary';
 
 // Pages - Code-split with React.lazy
 const LandingPage = lazy(() => import('./pages/LandingPage'));
@@ -45,8 +46,9 @@ function ProtectedRoute({ children }) {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
+    <ErrorBoundary>
+      <AuthProvider>
+        <BrowserRouter>
         <Suspense
           fallback={
             <div className="min-h-screen bg-[#F5EDE3] flex items-center justify-center">
@@ -94,5 +96,6 @@ export default function App() {
         </Suspense>
       </BrowserRouter>
     </AuthProvider>
-  );
+  </ErrorBoundary>
+);
 }
